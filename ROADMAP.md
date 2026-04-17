@@ -121,6 +121,9 @@ Testable output:
 - Menu event muncul setelah connected.
 - Current local station: `http://10.10.116.4:8000/`.
 - Station command: `php artisan serve --host 10.10.116.4`.
+- Physical device Settings value: `10.10.116.4:8000`.
+- Emulator Settings value: `10.0.2.2:8000`.
+- Raw IP input is normalized to `http://<ip>:8000/` when no scheme/port is provided.
 - UAT Phase 3 selesai.
 
 ### Phase 4: Connected Event Gate

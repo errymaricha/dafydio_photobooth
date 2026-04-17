@@ -229,6 +229,9 @@ Testing:
 - Connect success dengan `PB-DEVICE-01` dan `secret-device-key`.
 - Disconnect/offline tidak memunculkan Launch Event.
 - Current local station: `http://10.10.116.4:8000/`, run with `php artisan serve --host 10.10.116.4`.
+- If the app runs on Android emulator, use `10.0.2.2:8000` in Settings.
+- If the app runs on physical device, use `10.10.116.4:8000` in Settings.
+- Station IP input accepts raw IP and auto-adds `http://` plus default port `:8000` when no port is provided.
 - UAT Phase 3.
 
 ### Phase 4: Connected Event Gate

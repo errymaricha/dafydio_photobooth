@@ -56,6 +56,9 @@ Checklist ini mengikuti fase coding Android agar setiap penambahan fitur bisa la
 - [ ] Status implementation: Station connection checker tersedia dan memakai Station IP dari Settings.
 - [ ] Photobooth Station berjalan di `http://10.10.116.4:8000/`.
 - [ ] Station dijalankan dengan `php artisan serve --host 10.10.116.4`.
+- [ ] Device fisik memakai Station IP `10.10.116.4:8000`.
+- [ ] Emulator memakai Station IP `10.0.2.2:8000`.
+- [ ] Input `10.10.116.4` otomatis dinormalisasi ke port `8000`.
 - [ ] Connect ke Photobooth Station berhasil dengan IP lokal.
 - [ ] Device ID valid diterima station.
 - [ ] Token valid diterima station.

@@ -405,10 +405,11 @@ private fun SettingsScreen(state: BoothUiState, actions: BoothActions) {
         OutlinedTextField(
             value = state.stationIp,
             onValueChange = actions.updateStationIp,
-            label = { Text("Station IP") },
+            label = { Text("Station URL / IP") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
+        Text("Device fisik: 10.10.116.4:8000. Emulator: 10.0.2.2:8000.")
         OutlinedTextField(
             value = state.deviceId,
             onValueChange = actions.updateDeviceId,

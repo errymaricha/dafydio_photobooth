@@ -64,5 +64,14 @@ private fun String.toBaseUrl(): String {
     } else {
         "http://$value"
     }
-    return if (withScheme.endsWith("/")) withScheme else "$withScheme/"
+    val withoutSlash = withScheme.trimEnd('/')
+    val schemeEnd = withoutSlash.indexOf("://")
+    val hostAndMaybePort = if (schemeEnd >= 0) {
+        withoutSlash.substring(schemeEnd + 3)
+    } else {
+        withoutSlash
+    }
+    val hasPort = hostAndMaybePort.substringBefore('/').contains(":")
+    val withDefaultPort = if (hasPort) withoutSlash else "$withoutSlash:8000"
+    return "$withDefaultPort/"
 }
