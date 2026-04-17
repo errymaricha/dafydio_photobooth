@@ -96,10 +96,22 @@ Device ID: PB-DEVICE-01
 Token: secret-device-key
 ```
 
-Android mengirim:
+Android connect ke station dengan:
 
 ```http
-Authorization: Bearer secret-device-key
+POST /api/device/auth
+{
+  "device_id": "PB-DEVICE-01",
+  "device_code": "PB-DEVICE-01",
+  "token": "secret-device-key",
+  "api_key": "secret-device-key"
+}
+```
+
+Setelah auth sukses, Android menyimpan token Sanctum dari response dan request berikutnya memakai:
+
+```http
+Authorization: Bearer <sanctum-token>
 X-Device-Id: PB-DEVICE-01
 Accept: application/json
 ```

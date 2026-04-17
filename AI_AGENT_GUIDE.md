@@ -349,11 +349,14 @@ Contract version saat ini:
 
 Endpoint device:
 
+- `POST /api/device/auth`
 - `POST /api/device/vouchers/verify`
 - `POST /api/device/payment-quote`
 - `POST /api/device/sessions`
 - `GET /api/device/sessions/{session}/payment-check`
 - `POST /api/device/sessions/{session}/confirm-payment`
+
+Endpoint `POST /api/device/auth` dipakai saat Settings melakukan connect ke Photobooth Station. Input token di Settings adalah API key device awal. Jika auth sukses, response Sanctum token disimpan dan dipakai sebagai bearer token untuk endpoint protected berikutnya.
 
 Endpoint event/payment berada di jalur connected event, setelah `Launch Event`. Endpoint ini tidak boleh dipanggil saat user menjalankan mode lokal tanpa station connection.
 

@@ -60,6 +60,9 @@ Checklist ini mengikuti fase coding Android agar setiap penambahan fitur bisa la
 - [ ] Emulator memakai Station IP `10.0.2.2:8000`.
 - [ ] Input `10.10.116.4` otomatis dinormalisasi ke port `8000`.
 - [ ] Connect ke Photobooth Station berhasil dengan IP lokal.
+- [ ] Connect memakai `POST /api/device/auth`.
+- [ ] Token input awal adalah API key device, contoh `secret-device-key`.
+- [ ] Setelah connect sukses, Android memakai Sanctum bearer token dari response.
 - [ ] Device ID valid diterima station.
 - [ ] Token valid diterima station.
 - [ ] Token invalid menampilkan error.

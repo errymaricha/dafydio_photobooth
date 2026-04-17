@@ -4,6 +4,29 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
+data class DeviceAuthRequest(
+    @SerialName("device_id") val deviceId: String,
+    @SerialName("device_code") val deviceCode: String = deviceId,
+    @SerialName("token") val token: String,
+    @SerialName("api_key") val apiKey: String = token,
+)
+
+@Serializable
+data class DeviceAuthResponse(
+    @SerialName("token") val token: String? = null,
+    @SerialName("access_token") val accessToken: String? = null,
+    @SerialName("plainTextToken") val plainTextToken: String? = null,
+    @SerialName("device_id") val deviceId: String? = null,
+    @SerialName("device_code") val deviceCode: String? = null,
+    @SerialName("station_id") val stationId: String? = null,
+    @SerialName("station_code") val stationCode: String? = null,
+    @SerialName("message") val message: String? = null,
+) {
+    val bearerToken: String
+        get() = accessToken ?: token ?: plainTextToken.orEmpty()
+}
+
+@Serializable
 data class VerifyVoucherRequest(
     @SerialName("contract_version") val contractVersion: String,
     @SerialName("device_id") val deviceId: String,

@@ -595,6 +595,7 @@ Voucher And Payment Gate:
 
 Contract yang harus dijaga:
 
+- `POST /api/device/auth` untuk connect Settings ke Photobooth Station.
 - `contract_version`
 - `device_id`
 - `voucher_code`

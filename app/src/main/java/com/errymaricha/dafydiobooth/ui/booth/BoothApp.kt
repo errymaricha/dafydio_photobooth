@@ -420,7 +420,7 @@ private fun SettingsScreen(state: BoothUiState, actions: BoothActions) {
         OutlinedTextField(
             value = state.token,
             onValueChange = actions.updateToken,
-            label = { Text("Token") },
+            label = { Text("API Key / Token") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )

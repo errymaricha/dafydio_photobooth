@@ -182,8 +182,8 @@ class BoothViewModel(
             is BoothResult.Success -> {
                 val connectedState = current.copy(
                     stationIp = result.value.baseUrl,
-                    deviceId = current.deviceId.trim(),
-                    token = current.token.trim(),
+                    deviceId = result.value.deviceId,
+                    token = result.value.bearerToken,
                     isStationConnected = true,
                     errorMessage = null,
                 )

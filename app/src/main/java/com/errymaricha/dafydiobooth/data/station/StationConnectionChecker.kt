@@ -1,57 +1,85 @@
 package com.errymaricha.dafydiobooth.data.station
 
+import com.errymaricha.dafydiobooth.data.api.ApiErrorBody
+import com.errymaricha.dafydiobooth.data.api.DeviceAuthRequest
+import com.errymaricha.dafydiobooth.data.api.PhotoboothApi
 import com.errymaricha.dafydiobooth.domain.model.BoothError
 import com.errymaricha.dafydiobooth.domain.model.BoothResult
 import java.io.IOException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import okhttp3.Request
+import kotlinx.serialization.json.Json
+import retrofit2.HttpException
 
 data class StationConnection(
     val baseUrl: String,
+    val deviceId: String,
+    val bearerToken: String,
 )
 
-class StationConnectionChecker(
-    private val client: OkHttpClient = OkHttpClient(),
-) {
+class StationConnectionChecker {
+    private val json = Json { ignoreUnknownKeys = true }
+
     suspend fun connect(
         stationIp: String,
         deviceId: String,
         token: String,
-    ): BoothResult<StationConnection> = withContext(Dispatchers.IO) {
+    ): BoothResult<StationConnection> {
         val baseUrl = stationIp.toBaseUrl()
         if (baseUrl.isBlank()) {
-            return@withContext BoothResult.Failure(BoothError.Validation("Station IP wajib diisi"))
+            return BoothResult.Failure(BoothError.Validation("Station IP wajib diisi"))
         }
         if (deviceId.isBlank()) {
-            return@withContext BoothResult.Failure(BoothError.Validation("Device ID wajib diisi"))
+            return BoothResult.Failure(BoothError.Validation("Device ID wajib diisi"))
         }
         if (token.isBlank()) {
-            return@withContext BoothResult.Failure(BoothError.Validation("Token wajib diisi"))
+            return BoothResult.Failure(BoothError.Validation("Token wajib diisi"))
         }
 
-        val request = Request.Builder()
-            .url(baseUrl)
-            .header("Accept", "application/json")
-            .header("Authorization", "Bearer ${token.trim()}")
-            .header("X-Device-Id", deviceId.trim())
-            .build()
-
-        try {
-            client.newCall(request).execute().use { response ->
-                when (response.code) {
-                    in 200..299 -> BoothResult.Success(StationConnection(baseUrl))
-                    401 -> BoothResult.Failure(BoothError.Unauthorized)
-                    403 -> BoothResult.Failure(BoothError.Forbidden)
-                    422 -> BoothResult.Failure(BoothError.Validation("Device credential tidak valid"))
-                    else -> BoothResult.Failure(BoothError.Unknown("Station HTTP ${response.code}"))
-                }
+        return try {
+            val api = createUnauthenticatedApi(baseUrl)
+            val response = api.auth(
+                DeviceAuthRequest(
+                    deviceId = deviceId.trim(),
+                    token = token.trim(),
+                ),
+            )
+            val bearerToken = response.bearerToken
+            if (bearerToken.isBlank()) {
+                BoothResult.Failure(BoothError.Validation("Response auth tidak berisi token"))
+            } else {
+                BoothResult.Success(
+                    StationConnection(
+                        baseUrl = baseUrl,
+                        deviceId = response.deviceCode ?: response.deviceId ?: deviceId.trim(),
+                        bearerToken = bearerToken,
+                    ),
+                )
             }
+        } catch (error: HttpException) {
+            BoothResult.Failure(error.toBoothError())
         } catch (error: IOException) {
             BoothResult.Failure(BoothError.Network(error.message ?: "Station tidak bisa dijangkau"))
         } catch (error: IllegalArgumentException) {
             BoothResult.Failure(BoothError.Validation("Format Station IP tidak valid"))
+        }
+    }
+
+    private fun createUnauthenticatedApi(baseUrl: String): PhotoboothApi {
+        return com.errymaricha.dafydiobooth.data.api.ApiClient.create(
+            baseUrl = baseUrl,
+            tokenProvider = { "" },
+            deviceIdProvider = { "" },
+        )
+    }
+
+    private fun HttpException.toBoothError(): BoothError {
+        val apiMessage = response()?.errorBody()?.string()?.let { body ->
+            runCatching { json.decodeFromString<ApiErrorBody>(body).message }.getOrNull()
+        }
+        return when (code()) {
+            401 -> BoothError.Unauthorized
+            403 -> BoothError.Forbidden
+            422 -> BoothError.Validation(apiMessage ?: "Device credential tidak valid")
+            else -> BoothError.Unknown(apiMessage ?: "Station HTTP ${code()}")
         }
     }
 }
