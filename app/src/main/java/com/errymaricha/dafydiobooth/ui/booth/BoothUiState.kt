@@ -17,6 +17,9 @@ enum class BoothStep {
     Settings,
     LaunchEvent,
     SettingEvent,
+    VoucherCheck,
+    PaymentGate,
+    WaitingApproval,
 }
 
 data class BoothUiState(
@@ -30,6 +33,8 @@ data class BoothUiState(
     val voucherCode: String = "",
     val voucherType: String = "regular",
     val sessionType: String = "photo",
+    val paymentMethod: String = "manual",
+    val eventStatusMessage: String? = null,
     val selectedTemplate: String? = null,
     val capturedPhotoName: String? = null,
     val cameraSource: CameraSource = CameraSource.AndroidDefault,

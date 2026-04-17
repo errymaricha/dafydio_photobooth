@@ -130,17 +130,18 @@ Testable output:
 
 Build:
 
-- Launch Event screen.
-- Setting Event screen.
-- Voucher check screen.
-- Payment gate screen.
-- Manual payment waiting approval.
-- Check approval status.
+- Launch Event screen. Done.
+- Setting Event screen. Done.
+- Voucher check screen. Done.
+- Payment gate screen. Done.
+- Manual payment waiting approval. Done.
+- Check approval status. Done.
 
 Testable output:
 
 - Voucher/payment hanya muncul setelah Launch Event.
 - Manual payment menunggu station approval.
+- Android continues to template only after `payment-check` returns approved/unlocked status.
 - UAT Phase 4 selesai.
 
 ### Phase 5: Real Camera Capture

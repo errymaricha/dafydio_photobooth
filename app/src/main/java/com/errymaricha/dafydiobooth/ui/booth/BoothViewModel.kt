@@ -65,7 +65,7 @@ class BoothViewModel(
 
     fun openLaunchEvent() = _state.update {
         if (it.isStationConnected) {
-            it.copy(step = BoothStep.LaunchEvent, errorMessage = null)
+            it.copy(step = BoothStep.LaunchEvent, errorMessage = null, eventStatusMessage = null)
         } else {
             it.copy(errorMessage = "Connect Photobooth Station dulu")
         }
@@ -127,6 +127,24 @@ class BoothViewModel(
     fun updateVoucherType(value: String) = _state.update { it.copy(voucherType = value, errorMessage = null) }
 
     fun updateSessionType(value: String) = _state.update { it.copy(sessionType = value, errorMessage = null) }
+
+    fun updatePaymentMethod(value: String) = _state.update { it.copy(paymentMethod = value, errorMessage = null) }
+
+    fun startLaunchEventGate() = _state.update {
+        if (it.isStationConnected) {
+            it.copy(
+                step = BoothStep.VoucherCheck,
+                voucher = null,
+                quote = null,
+                session = null,
+                paymentStatus = null,
+                eventStatusMessage = "Masukkan voucher atau lanjutkan tanpa voucher.",
+                errorMessage = null,
+            )
+        } else {
+            it.copy(errorMessage = "Connect Photobooth Station dulu")
+        }
+    }
 
     fun setCameraSource(value: CameraSource) = updateAndPersistConfig { it.copy(cameraSource = value) }
 
@@ -204,7 +222,14 @@ class BoothViewModel(
         when (val result = useCases.verifyVoucher(current.deviceId, current.voucherCode, current.voucherType)) {
             is BoothResult.Success -> {
                 if (result.value.isValid) {
-                    _state.update { it.copy(voucher = result.value, step = BoothStep.TemplatePicker, errorMessage = null) }
+                    _state.update {
+                        it.copy(
+                            voucher = result.value,
+                            step = BoothStep.PaymentGate,
+                            eventStatusMessage = "Voucher valid. Siapkan payment quote.",
+                            errorMessage = null,
+                        )
+                    }
                     requestQuote()
                 } else {
                     _state.update { it.copy(voucher = result.value, errorMessage = result.value.message ?: "Voucher tidak valid") }
@@ -225,7 +250,16 @@ class BoothViewModel(
             )
         ) {
             is BoothResult.Success -> _state.update {
-                it.copy(quote = result.value, errorMessage = null)
+                it.copy(
+                    quote = result.value,
+                    step = BoothStep.PaymentGate,
+                    eventStatusMessage = if (result.value.paymentRequired) {
+                        "Payment dibutuhkan. Pilih manual payment untuk menunggu approval station."
+                    } else {
+                        "Payment tidak dibutuhkan. Lanjutkan ke template."
+                    },
+                    errorMessage = null,
+                )
             }
             is BoothResult.Failure -> showError(result.error)
         }
@@ -253,7 +287,86 @@ class BoothViewModel(
     fun checkPayment() = launchRequest {
         val sessionId = state.value.session?.sessionId.orEmpty()
         when (val result = useCases.checkPayment(sessionId)) {
-            is BoothResult.Success -> _state.update { it.copy(paymentStatus = result.value, errorMessage = null) }
+            is BoothResult.Success -> _state.update {
+                if (result.value.canUpload || result.value.unlockPhoto || result.value.paymentStatus == "paid") {
+                    it.copy(
+                        paymentStatus = result.value,
+                        step = BoothStep.TemplatePicker,
+                        eventStatusMessage = "Payment approved. Silakan pilih template.",
+                        errorMessage = null,
+                    )
+                } else {
+                    it.copy(
+                        paymentStatus = result.value,
+                        step = BoothStep.WaitingApproval,
+                        eventStatusMessage = "Masih menunggu approval Photobooth Station.",
+                        errorMessage = null,
+                    )
+                }
+            }
+            is BoothResult.Failure -> showError(result.error)
+        }
+    }
+
+    fun continueWithoutVoucher() = _state.update {
+        it.copy(
+            voucherCode = "",
+            voucherType = "regular",
+            voucher = null,
+            step = BoothStep.PaymentGate,
+            eventStatusMessage = "Lanjut tanpa voucher. Buat payment quote atau session manual.",
+            errorMessage = null,
+        )
+    }
+
+    fun createManualPaymentSession() = launchRequest {
+        val current = state.value
+        val quoteId = current.quote?.quoteId.orEmpty()
+        when (
+            val result = useCases.createSession(
+                current.deviceId,
+                current.voucherCode,
+                current.voucherType,
+                quoteId,
+                current.sessionType,
+            )
+        ) {
+            is BoothResult.Success -> _state.update {
+                it.copy(
+                    session = result.value,
+                    step = BoothStep.WaitingApproval,
+                    eventStatusMessage = "Manual payment dibuat. Tunggu approval dari Photobooth Station.",
+                    errorMessage = null,
+                )
+            }
+            is BoothResult.Failure -> showError(result.error)
+        }
+    }
+
+    fun continueAfterFreeQuote() = launchRequest {
+        val current = state.value
+        if (current.quote?.paymentRequired == true) {
+            _state.update { it.copy(errorMessage = "Payment masih dibutuhkan") }
+            return@launchRequest
+        }
+        val quoteId = current.quote?.quoteId.orEmpty()
+        when (
+            val result = useCases.createSession(
+                current.deviceId,
+                current.voucherCode,
+                current.voucherType,
+                quoteId,
+                current.sessionType,
+            )
+        ) {
+            is BoothResult.Success -> _state.update {
+                it.copy(
+                    session = result.value,
+                    step = BoothStep.TemplatePicker,
+                    eventStatusMessage = "Event siap. Silakan pilih template.",
+                    errorMessage = null,
+                )
+            }
             is BoothResult.Failure -> showError(result.error)
         }
     }
@@ -284,6 +397,9 @@ class BoothViewModel(
             BoothStep.Settings -> loginDevice()
             BoothStep.LaunchEvent -> openLaunchEvent()
             BoothStep.SettingEvent -> openSettingEvent()
+            BoothStep.VoucherCheck -> verifyVoucher()
+            BoothStep.PaymentGate -> requestQuote()
+            BoothStep.WaitingApproval -> checkPayment()
         }
     }
 

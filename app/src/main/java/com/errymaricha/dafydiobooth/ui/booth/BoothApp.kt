@@ -55,6 +55,9 @@ private enum class BoothRoute(val route: String) {
     Settings("settings"),
     LaunchEvent("launch-event"),
     SettingEvent("setting-event"),
+    VoucherCheck("voucher-check"),
+    PaymentGate("payment-gate"),
+    WaitingApproval("waiting-approval"),
 }
 
 private fun BoothViewModel.toActions() = BoothActions(
@@ -65,6 +68,7 @@ private fun BoothViewModel.toActions() = BoothActions(
     openSettings = ::openSettings,
     openLaunchEvent = ::openLaunchEvent,
     openSettingEvent = ::openSettingEvent,
+    startLaunchEventGate = ::startLaunchEventGate,
     selectTemplate = ::selectTemplate,
     saveCustomTemplate = ::saveCustomTemplate,
     capturePhoto = ::capturePhoto,
@@ -75,6 +79,16 @@ private fun BoothViewModel.toActions() = BoothActions(
     updateStationIp = ::updateStationIp,
     updateDeviceId = ::updateDeviceId,
     updateToken = ::updateToken,
+    updateVoucherCode = ::updateVoucherCode,
+    updateVoucherType = ::updateVoucherType,
+    updateSessionType = ::updateSessionType,
+    updatePaymentMethod = ::updatePaymentMethod,
+    verifyVoucher = ::verifyVoucher,
+    continueWithoutVoucher = ::continueWithoutVoucher,
+    requestQuote = ::requestQuote,
+    createManualPaymentSession = ::createManualPaymentSession,
+    continueAfterFreeQuote = ::continueAfterFreeQuote,
+    checkPayment = ::checkPayment,
     setCameraSource = ::setCameraSource,
     scanExternalCamera = ::scanExternalCamera,
     pairExternalCamera = ::pairExternalCamera,
@@ -101,6 +115,7 @@ data class BoothActions(
     val openSettings: () -> Unit = {},
     val openLaunchEvent: () -> Unit = {},
     val openSettingEvent: () -> Unit = {},
+    val startLaunchEventGate: () -> Unit = {},
     val selectTemplate: (String) -> Unit = {},
     val saveCustomTemplate: (String) -> Unit = {},
     val capturePhoto: () -> Unit = {},
@@ -111,6 +126,16 @@ data class BoothActions(
     val updateStationIp: (String) -> Unit = {},
     val updateDeviceId: (String) -> Unit = {},
     val updateToken: (String) -> Unit = {},
+    val updateVoucherCode: (String) -> Unit = {},
+    val updateVoucherType: (String) -> Unit = {},
+    val updateSessionType: (String) -> Unit = {},
+    val updatePaymentMethod: (String) -> Unit = {},
+    val verifyVoucher: () -> Unit = {},
+    val continueWithoutVoucher: () -> Unit = {},
+    val requestQuote: () -> Unit = {},
+    val createManualPaymentSession: () -> Unit = {},
+    val continueAfterFreeQuote: () -> Unit = {},
+    val checkPayment: () -> Unit = {},
     val setCameraSource: (CameraSource) -> Unit = {},
     val scanExternalCamera: () -> Unit = {},
     val pairExternalCamera: () -> Unit = {},
@@ -185,6 +210,15 @@ fun BoothApp(viewModel: BoothViewModel) {
             }
             composable(BoothRoute.SettingEvent.route) {
                 SettingEventScreen(state = state, actions = actions)
+            }
+            composable(BoothRoute.VoucherCheck.route) {
+                VoucherCheckScreen(state = state, actions = actions)
+            }
+            composable(BoothRoute.PaymentGate.route) {
+                PaymentGateScreen(state = state, actions = actions)
+            }
+            composable(BoothRoute.WaitingApproval.route) {
+                WaitingApprovalScreen(state = state, actions = actions)
             }
         }
     }
@@ -287,9 +321,9 @@ private fun LaunchEventScreen(state: BoothUiState, actions: BoothActions) {
     ScreenFrame(title = "Launch Event", state = state, actions = actions) {
         Text("Station: ${state.stationIp}")
         Text("Device: ${state.deviceId}")
-        Text("Voucher/payment gate akan dimulai di fase berikutnya.")
-        Button(onClick = actions.startNowPhoto, modifier = Modifier.fillMaxWidth()) {
-            Text("Continue to Template")
+        Text("Voucher/payment gate aktif untuk event connected.")
+        Button(onClick = actions.startLaunchEventGate, modifier = Modifier.fillMaxWidth()) {
+            Text("Start Event Gate")
         }
     }
 }
@@ -301,6 +335,93 @@ private fun SettingEventScreen(state: BoothUiState, actions: BoothActions) {
         Text("Konfigurasi event backend akan ditambahkan setelah contract event tersedia.")
         OutlinedButton(onClick = actions.openDashboard, modifier = Modifier.fillMaxWidth()) {
             Text("Back to Dashboard")
+        }
+    }
+}
+
+@Composable
+private fun VoucherCheckScreen(state: BoothUiState, actions: BoothActions) {
+    ScreenFrame(title = "Voucher Check", state = state, actions = actions) {
+        EventStatus(state)
+        OutlinedTextField(
+            value = state.voucherCode,
+            onValueChange = actions.updateVoucherCode,
+            label = { Text("Voucher Code") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = state.voucherType,
+            onValueChange = actions.updateVoucherType,
+            label = { Text("Voucher Type") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = state.sessionType,
+            onValueChange = actions.updateSessionType,
+            label = { Text("Session Type") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(onClick = actions.continueWithoutVoucher, modifier = Modifier.weight(1f)) {
+                Text("No Voucher")
+            }
+            Button(onClick = actions.verifyVoucher, enabled = !state.isLoading, modifier = Modifier.weight(1f)) {
+                Text("Verify")
+            }
+        }
+    }
+}
+
+@Composable
+private fun PaymentGateScreen(state: BoothUiState, actions: BoothActions) {
+    ScreenFrame(title = "Payment Gate", state = state, actions = actions) {
+        EventStatus(state)
+        Text("Voucher: ${state.voucher?.code ?: state.voucherCode.ifBlank { "-" }}")
+        Text("Type: ${state.voucher?.type ?: state.voucherType}")
+        Text("Amount: ${state.quote?.currency ?: "IDR"} ${state.quote?.amount ?: 0}")
+        Text("Payment required: ${state.quote?.paymentRequired ?: true}")
+        Text("Unlock photo: ${state.quote?.unlockPhoto ?: false}")
+        OutlinedTextField(
+            value = state.paymentMethod,
+            onValueChange = actions.updatePaymentMethod,
+            label = { Text("Payment Method") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(onClick = actions.requestQuote, enabled = !state.isLoading, modifier = Modifier.weight(1f)) {
+                Text("Quote")
+            }
+            Button(
+                onClick = actions.createManualPaymentSession,
+                enabled = !state.isLoading,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("Manual Payment")
+            }
+        }
+        OutlinedButton(
+            onClick = actions.continueAfterFreeQuote,
+            enabled = state.quote?.paymentRequired == false && !state.isLoading,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Continue Without Payment")
+        }
+    }
+}
+
+@Composable
+private fun WaitingApprovalScreen(state: BoothUiState, actions: BoothActions) {
+    ScreenFrame(title = "Waiting Approval", state = state, actions = actions) {
+        EventStatus(state)
+        Text("Session: ${state.session?.sessionId ?: "-"}")
+        Text("Payment: ${state.paymentStatus?.paymentStatus ?: state.session?.paymentStatus ?: "pending"}")
+        Text("Approval dilakukan dari Photobooth Station.")
+        Button(onClick = actions.checkPayment, enabled = !state.isLoading, modifier = Modifier.fillMaxWidth()) {
+            Text("Check Approval")
         }
     }
 }
@@ -517,6 +638,15 @@ private fun ScreenFrame(
 }
 
 @Composable
+private fun EventStatus(state: BoothUiState) {
+    state.eventStatusMessage?.let { message ->
+        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+            Text(text = message, modifier = Modifier.padding(14.dp))
+        }
+    }
+}
+
+@Composable
 private fun StatusLine(state: BoothUiState) {
     Text("Station: ${if (state.isStationConnected) "Connected" else "Not connected"}")
     Text("Station IP: ${state.stationIp.ifBlank { "-" }}")
@@ -597,6 +727,9 @@ private fun BoothStep.toRoute(): BoothRoute = when (this) {
     BoothStep.Settings -> BoothRoute.Settings
     BoothStep.LaunchEvent -> BoothRoute.LaunchEvent
     BoothStep.SettingEvent -> BoothRoute.SettingEvent
+    BoothStep.VoucherCheck -> BoothRoute.VoucherCheck
+    BoothStep.PaymentGate -> BoothRoute.PaymentGate
+    BoothStep.WaitingApproval -> BoothRoute.WaitingApproval
 }
 
 private val PreviewLocalState = BoothUiState(
@@ -652,6 +785,21 @@ private fun FinishTabletPreview() {
     DafydioBoothTheme {
         FinishScreen(
             state = PreviewConnectedState.copy(step = BoothStep.Finish),
+            actions = BoothActions(),
+        )
+    }
+}
+
+@Preview(name = "Payment Gate Tablet", widthDp = 1280, heightDp = 800, showBackground = true)
+@Composable
+private fun PaymentGateTabletPreview() {
+    DafydioBoothTheme {
+        PaymentGateScreen(
+            state = PreviewConnectedState.copy(
+                step = BoothStep.PaymentGate,
+                voucherCode = "PROMO-EVENT",
+                eventStatusMessage = "Payment dibutuhkan. Pilih manual payment untuk menunggu approval station.",
+            ),
             actions = BoothActions(),
         )
     }

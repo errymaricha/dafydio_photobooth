@@ -240,10 +240,11 @@ Tujuan:
 
 - Voucher/payment hanya muncul setelah `Launch Event`.
 - Manual payment menunggu approval station.
+- Status: implemented in Android UI using VoucherCheck, PaymentGate, and WaitingApproval steps.
 
 Coding scope:
 
-- Step baru untuk Launch Event, Setting Event, VoucherCheck, PaymentGate, WaitingApproval.
+- Step baru untuk Launch Event, Setting Event, VoucherCheck, PaymentGate, WaitingApproval. Done.
 - Use case/repository untuk event launch dan approval status jika backend contract sudah tersedia.
 - Poll/check status untuk waiting approval.
 - Block lanjut ke camera sebelum approved.

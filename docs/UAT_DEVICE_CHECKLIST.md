@@ -77,6 +77,7 @@ Checklist ini mengikuti fase coding Android agar setiap penambahan fitur bisa la
 
 ## Phase 4: Connected Event, Voucher, And Payment Gate
 
+- [ ] Status implementation: VoucherCheck, PaymentGate, dan WaitingApproval tersedia di Android.
 - [ ] Launch Event membuka event gate.
 - [ ] Setting Event membuka setting event.
 - [ ] Voucher/payment tidak muncul di mode lokal.
@@ -91,6 +92,7 @@ Checklist ini mengikuti fase coding Android agar setiap penambahan fitur bisa la
 - [ ] Approval dari Photobooth Station membuka akses ke template/camera.
 - [ ] Rejected/expired approval tetap menahan user di event gate.
 - [ ] Check status/retry tersedia saat waiting approval.
+- [ ] Setelah approved, Android lanjut ke pilih template.
 
 ## Phase 5: Real Camera Capture
 
