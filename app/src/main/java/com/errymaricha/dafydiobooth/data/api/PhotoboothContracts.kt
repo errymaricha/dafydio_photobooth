@@ -155,8 +155,15 @@ data class CreateSessionRequest(
 )
 
 @Serializable
+data class OpenManualSessionRequest(
+    @SerialName("customer_whatsapp") val customerWhatsapp: String,
+    @SerialName("payment_method") val paymentMethod: String = "manual",
+    @SerialName("additional_print_count") val additionalPrintCount: Int = 0,
+)
+
+@Serializable
 data class CreateSessionResponse(
-    @SerialName("contract_version") val contractVersion: String,
+    @SerialName("contract_version") val contractVersion: String = "",
     @SerialName("session_id") val sessionId: String,
     @SerialName("session_code") val sessionCode: String? = null,
     @SerialName("upload_url") val uploadUrl: String? = null,
@@ -167,6 +174,8 @@ data class CreateSessionResponse(
     @SerialName("voucher_code") val voucherCode: String? = null,
     @SerialName("voucher_type") val voucherType: String? = null,
 )
+
+typealias SessionCreateResponse = CreateSessionResponse
 
 @Serializable
 data class PaymentCheckResponse(

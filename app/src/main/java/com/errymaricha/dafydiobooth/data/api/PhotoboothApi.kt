@@ -24,6 +24,12 @@ interface PhotoboothApi {
     @POST("api/device/sessions")
     suspend fun createSession(@Body request: CreateSessionRequest): CreateSessionResponse
 
+    @POST("api/device/sessions")
+    suspend fun openSession(
+        @Header("Authorization") bearerToken: String,
+        @Body request: OpenManualSessionRequest,
+    ): SessionCreateResponse
+
     @GET("api/device/sessions/{id}/payment-check")
     suspend fun paymentCheck(@Path("id") sessionId: String): PaymentCheckResponse
 

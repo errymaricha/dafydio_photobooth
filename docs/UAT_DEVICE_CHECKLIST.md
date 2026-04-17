@@ -84,6 +84,9 @@ Checklist ini mengikuti fase coding Android agar setiap penambahan fitur bisa la
 - [ ] Jika ID Pelanggan dikosongkan, station memakai default customer.
 - [ ] Payment quote mengirim `customer_id` saat ID Pelanggan diisi.
 - [ ] Create session mengirim `customer_id` saat ID Pelanggan diisi.
+- [ ] Prepare Launch berhasil login device lalu sync pricing dari `GET /api/device/master-data`.
+- [ ] Additional print count mengubah final amount: photobooth price + additional print price x count.
+- [ ] Manual open session mengirim `customer_whatsapp`, `payment_method=manual`, dan `additional_print_count`.
 - [ ] Setting Event membuka setting event.
 - [ ] Voucher/payment tidak muncul di mode lokal.
 - [ ] Voucher/payment tidak muncul sebelum Launch Event.

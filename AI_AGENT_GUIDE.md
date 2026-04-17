@@ -249,12 +249,20 @@ Coding scope:
 
 - Step baru untuk Launch Event, Setting Event, VoucherCheck, PaymentGate, WaitingApproval. Done.
 - Use case/repository untuk event launch dan approval status jika backend contract sudah tersedia.
+- Paket launch pricing/manual session tersedia:
+  - `domain/model/LaunchModels.kt`
+  - `domain/repository/LaunchRepository.kt`
+  - `data/repository/LaunchRepositoryImpl.kt`
+  - `domain/usecase/LaunchUseCases.kt`
+  - `ui/launch/LaunchViewModel.kt`
 - Poll/check status untuk waiting approval.
 - Block lanjut ke camera sebelum approved.
 
 Testing:
 
 - Voucher/payment tidak muncul di mode lokal.
+- Prepare launch login device lalu sync `GET /api/device/master-data`.
+- Manual session mengirim `customer_whatsapp`, `payment_method=manual`, dan `additional_print_count`.
 - Manual payment tidak bisa dilewati.
 - UAT Phase 4.
 

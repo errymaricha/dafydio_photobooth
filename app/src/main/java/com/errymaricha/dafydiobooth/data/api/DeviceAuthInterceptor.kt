@@ -13,7 +13,7 @@ class DeviceAuthInterceptor(
         val request = chain.request().newBuilder()
             .header("Accept", "application/json")
             .apply {
-                if (token.isNotBlank()) {
+                if (token.isNotBlank() && chain.request().header("Authorization").isNullOrBlank()) {
                     header("Authorization", "Bearer $token")
                 }
                 if (deviceId.isNotBlank()) {
