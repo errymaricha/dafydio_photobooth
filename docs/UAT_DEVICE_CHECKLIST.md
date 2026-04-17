@@ -61,7 +61,7 @@ Checklist ini mengikuti fase coding Android agar setiap penambahan fitur bisa la
 - [ ] Input `10.10.116.4` otomatis dinormalisasi ke port `8000`.
 - [ ] Connect ke Photobooth Station berhasil dengan IP lokal.
 - [ ] Connect memakai `POST /api/device/auth`.
-- [ ] Auth request mengirim `device_id`, `device_code`, `token`, dan `api_key`.
+- [ ] Auth request mengirim `device_code` dan `api_key`.
 - [ ] Token input awal adalah API key device, contoh `secret-device-key`.
 - [ ] Setelah connect sukses, Android memakai Sanctum bearer token dari response.
 - [ ] Field API Key / Token tetap berisi API key awal setelah connect sukses.
@@ -79,6 +79,11 @@ Checklist ini mengikuti fase coding Android agar setiap penambahan fitur bisa la
 
 - [ ] Status implementation: VoucherCheck, PaymentGate, dan WaitingApproval tersedia di Android.
 - [ ] Launch Event membuka event gate.
+- [ ] Launch Event menampilkan field `ID Customer / ID Pelanggan`.
+- [ ] ID Pelanggan menerima nomor WA customer yang sudah terdaftar di station.
+- [ ] Jika ID Pelanggan dikosongkan, station memakai default customer.
+- [ ] Payment quote mengirim `customer_id` saat ID Pelanggan diisi.
+- [ ] Create session mengirim `customer_id` saat ID Pelanggan diisi.
 - [ ] Setting Event membuka setting event.
 - [ ] Voucher/payment tidak muncul di mode lokal.
 - [ ] Voucher/payment tidak muncul sebelum Launch Event.

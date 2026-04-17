@@ -122,11 +122,13 @@ Urutan connected event:
    - `Launch Event`
    - `Setting Event`
 5. Operator memilih `Launch Event`.
-6. App masuk ke event gate:
+6. Operator boleh mengisi `ID Customer / ID Pelanggan` memakai nomor WA yang sudah terdaftar di Photobooth Station.
+7. Jika `ID Customer / ID Pelanggan` kosong, Android mengirim `customer_id=null` dan station memakai default customer yang sudah disiapkan.
+8. App masuk ke event gate:
    - Voucher check.
    - Payment check atau payment quote.
    - Manual payment waiting approval jika metode pembayaran manual.
-7. Setelah payment approved atau voucher bypass valid, user lanjut ke pilih template dan camera flow.
+9. Setelah payment approved atau voucher bypass valid, user lanjut ke pilih template dan camera flow.
 
 Rules event:
 
@@ -136,6 +138,7 @@ Rules event:
 - Jika manual payment dipilih, Android harus menunggu approval dari Photobooth Station sebelum lanjut capture atau sebelum membuka fitur yang dikunci event.
 - Approval manual berasal dari station/admin, bukan dari Android sendiri.
 - Status waiting approval harus punya retry/check status.
+- `customer_id` hanya dipakai di connected event flow, bukan mode lokal.
 - Setelah approval, event/session baru boleh direkap ke database station.
 
 ## Android Settings Scope
@@ -351,6 +354,7 @@ Contract version saat ini:
 Endpoint device:
 
 - `POST /api/device/auth`
+- `GET /api/device/master-data`
 - `POST /api/device/vouchers/verify`
 - `POST /api/device/payment-quote`
 - `POST /api/device/sessions`
@@ -360,7 +364,9 @@ Endpoint device:
 Endpoint `POST /api/device/auth` dipakai saat Settings melakukan connect ke Photobooth Station. Input token di Settings adalah API key device awal. Jika auth sukses, response Sanctum token disimpan dan dipakai sebagai bearer token untuk endpoint protected berikutnya.
 
 Jangan overwrite API key awal dengan Sanctum token. DataStore harus memisahkan API key (`token`) dan bearer token hasil auth (`authToken`).
-Android mengirim semua alias field auth secara eksplisit: `device_id`, `device_code`, `token`, dan `api_key`, supaya kompatibel dengan validator Laravel.
+Android auth contract staging memakai `device_code` dan `api_key`. Jangan kirim alias lama kecuali backend contract berubah lagi.
+
+Endpoint `GET /api/device/master-data` memakai header `Authorization: Bearer <sanctum-token>` dan memuat `station`, `pricing`, `templates`, serta `slots`. DTO Android wajib mempertahankan key backend seperti `station_code`, `photobooth_price`, `template_code`, `canvas_width`, `slot_index`, dan `border_radius` via `@SerialName`.
 
 Endpoint event/payment berada di jalur connected event, setelah `Launch Event`. Endpoint ini tidak boleh dipanggil saat user menjalankan mode lokal tanpa station connection.
 
@@ -371,6 +377,7 @@ Field yang harus dijaga:
 - `voucher_code`
 - `voucher_type`
 - `session_type`
+- `customer_id`
 - `quote_id`
 - `session_id`
 - `session_code`
@@ -409,9 +416,12 @@ Payment quote:
   "device_id": "PB-DEVICE-01",
   "voucher_code": "PROMO-E2E-20K",
   "voucher_type": "promo",
-  "session_type": "photo"
+  "session_type": "photo",
+  "customer_id": "628123456789"
 }
 ```
+
+Catatan: `customer_id` boleh `null`/kosong. Backend station memakai default customer saat ID Pelanggan tidak diisi operator.
 
 Create session:
 
@@ -422,7 +432,8 @@ Create session:
   "voucher_code": "PROMO-E2E-20K",
   "voucher_type": "promo",
   "quote_id": "quote-1",
-  "session_type": "photo"
+  "session_type": "photo",
+  "customer_id": "628123456789"
 }
 ```
 

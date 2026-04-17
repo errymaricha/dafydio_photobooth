@@ -40,9 +40,7 @@ class StationConnectionChecker {
             val api = createUnauthenticatedApi(baseUrl)
             val response = api.auth(
                 DeviceAuthRequest(
-                    deviceId = deviceId.trim(),
                     deviceCode = deviceId.trim(),
-                    token = token.trim(),
                     apiKey = token.trim(),
                 ),
             )
@@ -55,7 +53,7 @@ class StationConnectionChecker {
                 BoothResult.Success(
                     StationConnection(
                         baseUrl = baseUrl,
-                        deviceId = response.deviceCode ?: response.deviceId ?: deviceId.trim(),
+                        deviceId = response.deviceCode.ifBlank { deviceId.trim() },
                         bearerToken = bearerToken,
                     ),
                 )

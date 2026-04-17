@@ -18,6 +18,7 @@ interface PhotoboothRepository {
         voucherCode: String,
         voucherType: String,
         sessionType: String,
+        customerId: String?,
     ): BoothResult<PaymentQuote>
 
     suspend fun createSession(
@@ -26,6 +27,7 @@ interface PhotoboothRepository {
         voucherType: String,
         quoteId: String,
         sessionType: String,
+        customerId: String?,
     ): BoothResult<BoothSession>
 
     suspend fun paymentCheck(sessionId: String): BoothResult<PaymentStatus>

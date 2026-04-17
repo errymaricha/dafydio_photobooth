@@ -15,6 +15,7 @@ Dafydio Booth ditargetkan menjadi sistem photobooth production-ready:
 - Jika connect ke station, session/capture/print direkap ke database station.
 - Setelah connect ke station, dashboard menampilkan `Launch Event` dan `Setting Event`.
 - Voucher/payment berada di dalam `Launch Event`.
+- `Launch Event` menyediakan `ID Customer / ID Pelanggan` optional memakai nomor WA terdaftar; jika kosong, station memakai default customer.
 - Jika pembayaran manual, Android menunggu approval dari Photobooth Station.
 - Station lokal bisa menangani print queue dan printer failure.
 - Cloud portal bisa menyimpan riwayat session dan mendukung re-order.
@@ -131,6 +132,7 @@ Testable output:
 Build:
 
 - Launch Event screen. Done.
+- Optional ID Customer / ID Pelanggan field. Done.
 - Setting Event screen. Done.
 - Voucher check screen. Done.
 - Payment gate screen. Done.
@@ -140,6 +142,8 @@ Build:
 Testable output:
 
 - Voucher/payment hanya muncul setelah Launch Event.
+- Payment quote dan create session membawa `customer_id` jika operator mengisi ID Pelanggan.
+- Jika ID Pelanggan kosong, backend station memakai default customer.
 - Manual payment menunggu station approval.
 - Android continues to template only after `payment-check` returns approved/unlocked status.
 - UAT Phase 4 selesai.
@@ -599,9 +603,12 @@ Contract yang harus dijaga:
 - `POST /api/device/auth` untuk connect Settings ke Photobooth Station.
 - `contract_version`
 - `device_id`
+- `device_code`
+- `api_key`
 - `voucher_code`
 - `voucher_type`
 - `session_type`
+- `customer_id`
 - `quote_id`
 - `session_id`
 - `session_code`

@@ -26,11 +26,13 @@ Settings
 -> Connect Photobooth Station
 -> Dashboard menampilkan Launch Event dan Setting Event
 -> Launch Event
+-> Input ID Customer / ID Pelanggan optional
 -> Voucher/payment gate
 -> Template/camera flow
 ```
 
 Voucher/payment hanya berjalan setelah device connect ke Photobooth Station dan operator membuka `Launch Event`.
+Field `ID Customer / ID Pelanggan` di Launch Event memakai nomor WA yang sudah terdaftar di station. Jika dikosongkan, backend station memakai default customer yang disiapkan di Photobooth Station.
 
 ## Tech Stack
 
@@ -101,9 +103,7 @@ Android connect ke station dengan:
 ```http
 POST /api/device/auth
 {
-  "device_id": "PB-DEVICE-01",
   "device_code": "PB-DEVICE-01",
-  "token": "secret-device-key",
   "api_key": "secret-device-key"
 }
 ```
@@ -117,6 +117,13 @@ Accept: application/json
 ```
 
 Android menyimpan API key device dan Sanctum token di field berbeda. Field Settings `API Key / Token` tetap berisi API key awal, sedangkan token Sanctum disimpan internal sebagai `authToken`.
+
+Master data station tersedia dari:
+
+```http
+GET /api/device/master-data
+Authorization: Bearer <sanctum-token>
+```
 
 ## Commands
 
@@ -160,7 +167,7 @@ Current phase status:
 - Phase 1: Dashboard Local Flow. Implemented.
 - Phase 2: Settings Persistence. Implemented.
 - Phase 3: Station Connection And Connected Dashboard. Implemented.
-- Phase 4: Connected Event Gate. Next.
+- Phase 4: Connected Event Gate. Implemented, including optional customer ID payload.
 - Phase 5: Real Camera Capture.
 - Phase 6: External Canon Camera Interface.
 - Phase 7: Template Render And Finish Actions.

@@ -82,6 +82,7 @@ private fun BoothViewModel.toActions() = BoothActions(
     updateVoucherCode = ::updateVoucherCode,
     updateVoucherType = ::updateVoucherType,
     updateSessionType = ::updateSessionType,
+    updateCustomerId = ::updateCustomerId,
     updatePaymentMethod = ::updatePaymentMethod,
     verifyVoucher = ::verifyVoucher,
     continueWithoutVoucher = ::continueWithoutVoucher,
@@ -129,6 +130,7 @@ data class BoothActions(
     val updateVoucherCode: (String) -> Unit = {},
     val updateVoucherType: (String) -> Unit = {},
     val updateSessionType: (String) -> Unit = {},
+    val updateCustomerId: (String) -> Unit = {},
     val updatePaymentMethod: (String) -> Unit = {},
     val verifyVoucher: () -> Unit = {},
     val continueWithoutVoucher: () -> Unit = {},
@@ -322,6 +324,18 @@ private fun LaunchEventScreen(state: BoothUiState, actions: BoothActions) {
         Text("Station: ${state.stationIp}")
         Text("Device: ${state.deviceId}")
         Text("Voucher/payment gate aktif untuk event connected.")
+        OutlinedTextField(
+            value = state.customerId,
+            onValueChange = actions.updateCustomerId,
+            label = { Text("ID Customer / ID Pelanggan") },
+            placeholder = { Text("Nomor WA terdaftar") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Text(
+            text = "Kosongkan untuk memakai default customer dari Photobooth Station.",
+            style = MaterialTheme.typography.bodySmall,
+        )
         Button(onClick = actions.startLaunchEventGate, modifier = Modifier.fillMaxWidth()) {
             Text("Start Event Gate")
         }

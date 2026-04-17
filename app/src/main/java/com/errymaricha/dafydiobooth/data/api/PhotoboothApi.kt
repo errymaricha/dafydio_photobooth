@@ -2,12 +2,18 @@ package com.errymaricha.dafydiobooth.data.api
 
 import retrofit2.http.Body
 import retrofit2.http.GET
+import retrofit2.http.Header
 import retrofit2.http.POST
 import retrofit2.http.Path
 
 interface PhotoboothApi {
     @POST("api/device/auth")
     suspend fun auth(@Body request: DeviceAuthRequest): DeviceAuthResponse
+
+    @GET("api/device/master-data")
+    suspend fun getMasterData(
+        @Header("Authorization") bearerToken: String,
+    ): DeviceMasterDataResponse
 
     @POST("api/device/vouchers/verify")
     suspend fun verifyVoucher(@Body request: VerifyVoucherRequest): VerifyVoucherResponse

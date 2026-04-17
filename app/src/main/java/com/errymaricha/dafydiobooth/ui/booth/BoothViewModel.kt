@@ -128,6 +128,8 @@ class BoothViewModel(
 
     fun updateSessionType(value: String) = _state.update { it.copy(sessionType = value, errorMessage = null) }
 
+    fun updateCustomerId(value: String) = _state.update { it.copy(customerId = value, errorMessage = null) }
+
     fun updatePaymentMethod(value: String) = _state.update { it.copy(paymentMethod = value, errorMessage = null) }
 
     fun startLaunchEventGate() = _state.update {
@@ -247,6 +249,7 @@ class BoothViewModel(
                 current.voucherCode,
                 current.voucherType,
                 current.sessionType,
+                current.customerId.ifBlank { null },
             )
         ) {
             is BoothResult.Success -> _state.update {
@@ -275,6 +278,7 @@ class BoothViewModel(
                 current.voucherType,
                 quoteId,
                 current.sessionType,
+                current.customerId.ifBlank { null },
             )
         ) {
             is BoothResult.Success -> _state.update {
@@ -329,6 +333,7 @@ class BoothViewModel(
                 current.voucherType,
                 quoteId,
                 current.sessionType,
+                current.customerId.ifBlank { null },
             )
         ) {
             is BoothResult.Success -> _state.update {
@@ -357,6 +362,7 @@ class BoothViewModel(
                 current.voucherType,
                 quoteId,
                 current.sessionType,
+                current.customerId.ifBlank { null },
             )
         ) {
             is BoothResult.Success -> _state.update {

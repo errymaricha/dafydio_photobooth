@@ -2,29 +2,79 @@ package com.errymaricha.dafydiobooth.data.api
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
 
 @Serializable
 data class DeviceAuthRequest(
-    @SerialName("device_id") val deviceId: String,
     @SerialName("device_code") val deviceCode: String,
-    @SerialName("token") val token: String,
     @SerialName("api_key") val apiKey: String,
 )
 
 @Serializable
 data class DeviceAuthResponse(
-    @SerialName("token") val token: String? = null,
-    @SerialName("access_token") val accessToken: String? = null,
-    @SerialName("plainTextToken") val plainTextToken: String? = null,
-    @SerialName("device_id") val deviceId: String? = null,
-    @SerialName("device_code") val deviceCode: String? = null,
-    @SerialName("station_id") val stationId: String? = null,
+    @SerialName("token") val token: String,
+    @SerialName("device_id") val deviceId: String,
+    @SerialName("station_id") val stationId: String,
+    @SerialName("device_code") val deviceCode: String,
     @SerialName("station_code") val stationCode: String? = null,
     @SerialName("message") val message: String? = null,
 ) {
     val bearerToken: String
-        get() = accessToken ?: token ?: plainTextToken.orEmpty()
+        get() = token
 }
+
+@Serializable
+data class DeviceMasterDataResponse(
+    @SerialName("contract_version") val contractVersion: String,
+    @SerialName("station") val station: StationDto,
+    @SerialName("pricing") val pricing: PricingDto,
+    @SerialName("templates") val templates: List<TemplateDto>,
+)
+
+@Serializable
+data class StationDto(
+    @SerialName("id") val id: String,
+    @SerialName("station_code") val stationCode: String,
+    @SerialName("station_name") val stationName: String,
+    @SerialName("location_name") val locationName: String? = null,
+    @SerialName("timezone") val timezone: String? = null,
+    @SerialName("local_ip") val localIp: String? = null,
+    @SerialName("status") val status: String? = null,
+)
+
+@Serializable
+data class PricingDto(
+    @SerialName("photobooth_price") val photoboothPrice: Double,
+    @SerialName("additional_print_price") val additionalPrintPrice: Double,
+    @SerialName("currency_code") val currencyCode: String,
+)
+
+@Serializable
+data class TemplateDto(
+    @SerialName("id") val id: String,
+    @SerialName("template_code") val templateCode: String,
+    @SerialName("template_name") val templateName: String,
+    @SerialName("category") val category: String? = null,
+    @SerialName("paper_size") val paperSize: String? = null,
+    @SerialName("canvas_width") val canvasWidth: Int,
+    @SerialName("canvas_height") val canvasHeight: Int,
+    @SerialName("preview_url") val previewUrl: String? = null,
+    @SerialName("overlay_url") val overlayUrl: String? = null,
+    @SerialName("config") val config: JsonObject? = null,
+    @SerialName("slots") val slots: List<TemplateSlotDto>,
+)
+
+@Serializable
+data class TemplateSlotDto(
+    @SerialName("slot_index") val slotIndex: Int,
+    @SerialName("x") val x: Int,
+    @SerialName("y") val y: Int,
+    @SerialName("width") val width: Int,
+    @SerialName("height") val height: Int,
+    @SerialName("rotation") val rotation: Double,
+    @SerialName("border_radius") val borderRadius: Int,
+    @SerialName("metadata") val metadata: JsonObject? = null,
+)
 
 @Serializable
 data class VerifyVoucherRequest(
@@ -58,6 +108,7 @@ data class PaymentQuoteRequest(
     @SerialName("voucher_code") val voucherCode: String,
     @SerialName("voucher_type") val voucherType: String,
     @SerialName("session_type") val sessionType: String,
+    @SerialName("customer_id") val customerId: String? = null,
     @SerialName("subtotal_amount") val subtotalAmount: Long? = null,
 )
 
@@ -100,6 +151,7 @@ data class CreateSessionRequest(
     @SerialName("voucher_type") val voucherType: String,
     @SerialName("quote_id") val quoteId: String,
     @SerialName("session_type") val sessionType: String,
+    @SerialName("customer_id") val customerId: String? = null,
 )
 
 @Serializable

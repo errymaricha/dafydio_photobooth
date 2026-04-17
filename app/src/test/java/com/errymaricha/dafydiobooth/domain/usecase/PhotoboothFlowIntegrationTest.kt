@@ -27,13 +27,21 @@ class PhotoboothFlowIntegrationTest {
         assertTrue(voucher is BoothResult.Success)
         assertTrue((voucher as BoothResult.Success).value.isValid)
 
-        val quote = useCases.requestPaymentQuote("device-1", "VCH-001", "regular", "photo")
+        val quote = useCases.requestPaymentQuote("device-1", "VCH-001", "regular", "photo", "628123456789")
         assertTrue(quote is BoothResult.Success)
         assertEquals("quote-1", (quote as BoothResult.Success).value.quoteId)
 
-        val session = useCases.createSession("device-1", "VCH-001", "regular", quote.value.quoteId, "photo")
+        val session = useCases.createSession(
+            "device-1",
+            "VCH-001",
+            "regular",
+            quote.value.quoteId,
+            "photo",
+            "628123456789",
+        )
         assertTrue(session is BoothResult.Success)
         assertEquals("session-1", (session as BoothResult.Success).value.sessionId)
+        assertEquals("628123456789", repository.lastCustomerId)
 
         assertEquals(
             listOf("verifyVoucher", "paymentQuote", "createSession"),
@@ -44,6 +52,7 @@ class PhotoboothFlowIntegrationTest {
 
 private class FakePhotoboothRepository : PhotoboothRepository {
     val calls = mutableListOf<String>()
+    var lastCustomerId: String? = null
 
     override suspend fun verifyVoucher(
         deviceId: String,
@@ -71,8 +80,10 @@ private class FakePhotoboothRepository : PhotoboothRepository {
         voucherCode: String,
         voucherType: String,
         sessionType: String,
+        customerId: String?,
     ): BoothResult<PaymentQuote> {
         calls += "paymentQuote"
+        lastCustomerId = customerId
         return BoothResult.Success(
             PaymentQuote(
                 quoteId = "quote-1",
@@ -95,8 +106,10 @@ private class FakePhotoboothRepository : PhotoboothRepository {
         voucherType: String,
         quoteId: String,
         sessionType: String,
+        customerId: String?,
     ): BoothResult<BoothSession> {
         calls += "createSession"
+        lastCustomerId = customerId
         return BoothResult.Success(
             BoothSession(
                 sessionId = "session-1",

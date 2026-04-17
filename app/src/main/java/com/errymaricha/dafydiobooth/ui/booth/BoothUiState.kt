@@ -33,6 +33,7 @@ data class BoothUiState(
     val voucherCode: String = "",
     val voucherType: String = "regular",
     val sessionType: String = "photo",
+    val customerId: String = "",
     val paymentMethod: String = "manual",
     val eventStatusMessage: String? = null,
     val selectedTemplate: String? = null,

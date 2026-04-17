@@ -44,6 +44,7 @@ class ApiPhotoboothRepository(
         voucherCode: String,
         voucherType: String,
         sessionType: String,
+        customerId: String?,
     ): BoothResult<PaymentQuote> = safeApiCall {
         api.paymentQuote(
             PaymentQuoteRequest(
@@ -52,6 +53,7 @@ class ApiPhotoboothRepository(
                 voucherCode = voucherCode,
                 voucherType = voucherType,
                 sessionType = sessionType,
+                customerId = customerId?.ifBlank { null },
             ),
         ).toDomain()
     }
@@ -62,6 +64,7 @@ class ApiPhotoboothRepository(
         voucherType: String,
         quoteId: String,
         sessionType: String,
+        customerId: String?,
     ): BoothResult<BoothSession> = safeApiCall {
         api.createSession(
             CreateSessionRequest(
@@ -71,6 +74,7 @@ class ApiPhotoboothRepository(
                 voucherType = voucherType,
                 quoteId = quoteId,
                 sessionType = sessionType,
+                customerId = customerId?.ifBlank { null },
             ),
         ).toDomain()
     }

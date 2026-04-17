@@ -26,9 +26,10 @@ class RequestPaymentQuoteUseCase(private val repository: PhotoboothRepository) {
         voucherCode: String,
         voucherType: String,
         sessionType: String,
+        customerId: String? = null,
     ): BoothResult<PaymentQuote> {
         if (sessionType.isBlank()) return BoothResult.Failure(BoothError.Validation("Session type wajib diisi"))
-        return repository.paymentQuote(deviceId, voucherCode, voucherType, sessionType)
+        return repository.paymentQuote(deviceId, voucherCode, voucherType, sessionType, customerId)
     }
 }
 
@@ -39,9 +40,10 @@ class CreateSessionUseCase(private val repository: PhotoboothRepository) {
         voucherType: String,
         quoteId: String,
         sessionType: String,
+        customerId: String? = null,
     ): BoothResult<BoothSession> {
         if (quoteId.isBlank()) return BoothResult.Failure(BoothError.Validation("Quote belum tersedia"))
-        return repository.createSession(deviceId, voucherCode, voucherType, quoteId, sessionType)
+        return repository.createSession(deviceId, voucherCode, voucherType, quoteId, sessionType, customerId)
     }
 }
 
