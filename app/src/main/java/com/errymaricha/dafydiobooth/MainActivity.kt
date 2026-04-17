@@ -10,15 +10,22 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.errymaricha.dafydiobooth.data.api.ApiClient
 import com.errymaricha.dafydiobooth.data.local.DeviceConfigStore
 import com.errymaricha.dafydiobooth.data.repository.ApiPhotoboothRepository
+import com.errymaricha.dafydiobooth.data.repository.LaunchRepositoryImpl
 import com.errymaricha.dafydiobooth.data.station.StationConnectionChecker
+import com.errymaricha.dafydiobooth.domain.usecase.CalculateFinalAmountUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.CheckPaymentUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.ConfirmPaymentUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.CreateSessionUseCase
+import com.errymaricha.dafydiobooth.domain.usecase.OpenManualSessionUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.PhotoboothUseCases
+import com.errymaricha.dafydiobooth.domain.usecase.PrepareLaunchUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.RequestPaymentQuoteUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.VerifyVoucherUseCase
 import com.errymaricha.dafydiobooth.ui.booth.BoothApp
+import com.errymaricha.dafydiobooth.ui.booth.BoothViewModel
 import com.errymaricha.dafydiobooth.ui.booth.BoothViewModelFactory
+import com.errymaricha.dafydiobooth.ui.launch.LaunchViewModel
+import com.errymaricha.dafydiobooth.ui.launch.LaunchViewModelFactory
 import com.errymaricha.dafydiobooth.ui.theme.DafydioBoothTheme
 
 class MainActivity : ComponentActivity() {
@@ -27,15 +34,15 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         val configStore = DeviceConfigStore(applicationContext)
-        val repository = ApiPhotoboothRepository(
-            ApiClient.create(
-                tokenProvider = {
-                    val config = configStore.currentConfigBlocking()
-                    config.authToken.ifBlank { config.token }
-                },
-                deviceIdProvider = { configStore.currentConfigBlocking().deviceId },
-            ),
+        val api = ApiClient.create(
+            tokenProvider = {
+                val config = configStore.currentConfigBlocking()
+                config.authToken.ifBlank { config.token }
+            },
+            deviceIdProvider = { configStore.currentConfigBlocking().deviceId },
         )
+        val repository = ApiPhotoboothRepository(api)
+        val launchRepository = LaunchRepositoryImpl(api)
         val useCases = PhotoboothUseCases(
             verifyVoucher = VerifyVoucherUseCase(repository),
             requestPaymentQuote = RequestPaymentQuoteUseCase(repository),
@@ -48,10 +55,20 @@ class MainActivity : ComponentActivity() {
             configStore = configStore,
             stationConnectionChecker = StationConnectionChecker(),
         )
+        val launchFactory = LaunchViewModelFactory(
+            prepareLaunch = PrepareLaunchUseCase(launchRepository),
+            openManualSession = OpenManualSessionUseCase(launchRepository),
+            calculateFinalAmount = CalculateFinalAmountUseCase(),
+        )
 
         setContent {
             DafydioBoothTheme {
-                BoothApp(viewModel(factory = factory))
+                val boothViewModel = viewModel<BoothViewModel>(factory = factory)
+                val launchViewModel = viewModel<LaunchViewModel>(factory = launchFactory)
+                BoothApp(
+                    viewModel = boothViewModel,
+                    launchViewModel = launchViewModel,
+                )
             }
         }
     }

@@ -87,10 +87,6 @@ class LaunchViewModel(
                 _ui.update { it.copy(error = "Token station belum tersedia") }
                 return@launch
             }
-            if (current.customerWhatsapp.isBlank()) {
-                _ui.update { it.copy(error = "No WA wajib diisi") }
-                return@launch
-            }
 
             runCatching {
                 _ui.update { it.copy(loading = true, error = null, message = null) }

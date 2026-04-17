@@ -41,6 +41,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import kotlinx.coroutines.delay
+import com.errymaricha.dafydiobooth.ui.launch.LaunchUiState
+import com.errymaricha.dafydiobooth.ui.launch.LaunchViewModel
 import com.errymaricha.dafydiobooth.ui.theme.DafydioBoothTheme
 
 private enum class BoothRoute(val route: String) {
@@ -156,11 +158,28 @@ data class BoothActions(
     val retry: () -> Unit = {},
 )
 
+private fun LaunchViewModel.toActions() = LaunchActions(
+    onWhatsappChanged = ::onWhatsappChanged,
+    onAdditionalPrintChanged = ::onAdditionalPrintChanged,
+    submitManualPaymentRequest = ::submitManualPaymentRequest,
+)
+
+data class LaunchActions(
+    val onWhatsappChanged: (String) -> Unit = {},
+    val onAdditionalPrintChanged: (Int) -> Unit = {},
+    val submitManualPaymentRequest: () -> Unit = {},
+)
+
 @Composable
-fun BoothApp(viewModel: BoothViewModel) {
+fun BoothApp(
+    viewModel: BoothViewModel,
+    launchViewModel: LaunchViewModel,
+) {
     val state by viewModel.state.collectAsState()
+    val launchState by launchViewModel.ui.collectAsState()
     val navController = rememberNavController()
     val actions = viewModel.toActions()
+    val launchActions = launchViewModel.toActions()
 
     LaunchedEffect(state.step) {
         navController.navigate(state.step.toRoute().route) {
@@ -169,6 +188,16 @@ fun BoothApp(viewModel: BoothViewModel) {
                 saveState = true
             }
             restoreState = true
+        }
+    }
+
+    LaunchedEffect(state.step, state.deviceId, state.token) {
+        if (state.step == BoothStep.LaunchEvent && state.isStationConnected) {
+            launchViewModel.init(
+                deviceCode = state.deviceId,
+                apiKey = state.token,
+            )
+            launchViewModel.onWhatsappChanged(state.customerId)
         }
     }
 
@@ -208,7 +237,12 @@ fun BoothApp(viewModel: BoothViewModel) {
                 SettingsScreen(state = state, actions = actions)
             }
             composable(BoothRoute.LaunchEvent.route) {
-                LaunchEventScreen(state = state, actions = actions)
+                LaunchEventScreen(
+                    state = state,
+                    launchState = launchState,
+                    actions = actions,
+                    launchActions = launchActions,
+                )
             }
             composable(BoothRoute.SettingEvent.route) {
                 SettingEventScreen(state = state, actions = actions)
@@ -319,14 +353,30 @@ private fun DashboardStatusPanel(state: BoothUiState, modifier: Modifier = Modif
 }
 
 @Composable
-private fun LaunchEventScreen(state: BoothUiState, actions: BoothActions) {
+private fun LaunchEventScreen(
+    state: BoothUiState,
+    launchState: LaunchUiState,
+    actions: BoothActions,
+    launchActions: LaunchActions,
+) {
     ScreenFrame(title = "Launch Event", state = state, actions = actions) {
         Text("Station: ${state.stationIp}")
         Text("Device: ${state.deviceId}")
         Text("Voucher/payment gate aktif untuk event connected.")
+        if (launchState.loading) {
+            CircularProgressIndicator()
+        }
+        launchState.pricing?.let { pricing ->
+            Text("Harga photobooth: ${pricing.currencyCode} ${pricing.photoboothPrice.toLong()}")
+            Text("Tambahan print: ${pricing.currencyCode} ${pricing.additionalPrintPrice.toLong()}")
+            Text("Total: ${pricing.currencyCode} ${launchState.finalAmount.toLong()}", fontWeight = FontWeight.Bold)
+        } ?: Text("Pricing belum tersinkron dari Photobooth Station.")
         OutlinedTextField(
             value = state.customerId,
-            onValueChange = actions.updateCustomerId,
+            onValueChange = { value ->
+                actions.updateCustomerId(value)
+                launchActions.onWhatsappChanged(value)
+            },
             label = { Text("ID Customer / ID Pelanggan") },
             placeholder = { Text("Nomor WA terdaftar") },
             singleLine = true,
@@ -336,6 +386,28 @@ private fun LaunchEventScreen(state: BoothUiState, actions: BoothActions) {
             text = "Kosongkan untuk memakai default customer dari Photobooth Station.",
             style = MaterialTheme.typography.bodySmall,
         )
+        OutlinedTextField(
+            value = launchState.additionalPrintCount.toString(),
+            onValueChange = { value ->
+                launchActions.onAdditionalPrintChanged(value.toIntOrNull() ?: 0)
+            },
+            label = { Text("Additional Print Count") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        launchState.message?.let { message ->
+            Text(message, color = MaterialTheme.colorScheme.primary)
+        }
+        launchState.error?.let { error ->
+            Text(error, color = MaterialTheme.colorScheme.error)
+        }
+        OutlinedButton(
+            onClick = launchActions.submitManualPaymentRequest,
+            enabled = !launchState.loading,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Request Manual Payment")
+        }
         Button(onClick = actions.startLaunchEventGate, modifier = Modifier.fillMaxWidth()) {
             Text("Start Event Gate")
         }

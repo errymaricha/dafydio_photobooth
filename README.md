@@ -34,6 +34,7 @@ Settings
 Voucher/payment hanya berjalan setelah device connect ke Photobooth Station dan operator membuka `Launch Event`.
 Field `ID Customer / ID Pelanggan` di Launch Event memakai nomor WA yang sudah terdaftar di station. Jika dikosongkan, backend station memakai default customer yang disiapkan di Photobooth Station.
 Paket launch sudah tersedia untuk login device, sync pricing dari master-data, hitung final amount, dan open manual session dengan `customer_whatsapp`, `payment_method=manual`, serta `additional_print_count`.
+Layar Launch Event sudah bind ke paket launch untuk menampilkan pricing, final amount, additional print, dan request manual payment.
 
 ## Tech Stack
 

@@ -36,7 +36,7 @@ class LaunchRepositoryImpl(
         val response = api.openSession(
             bearerToken = "Bearer $token",
             request = OpenManualSessionRequest(
-                customerWhatsapp = customerWhatsapp,
+                customerWhatsapp = customerWhatsapp.ifBlank { null },
                 additionalPrintCount = additionalPrintCount.coerceAtLeast(0),
             ),
         )

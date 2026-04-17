@@ -139,11 +139,13 @@ Build:
 - Manual payment waiting approval. Done.
 - Check approval status. Done.
 - Launch Repository + UseCase + ViewModel package. Done.
+- Launch ViewModel binding ke Launch Event Compose screen. Done.
 
 Testable output:
 
 - Voucher/payment hanya muncul setelah Launch Event.
 - Prepare launch melakukan login device dan sync pricing dari master-data.
+- Launch Event menampilkan pricing, final amount, input No WA optional, additional print count, dan tombol manual payment request.
 - Manual open session mengirim `customer_whatsapp`, `payment_method=manual`, dan `additional_print_count`.
 - Payment quote dan create session membawa `customer_id` jika operator mengisi ID Pelanggan.
 - Jika ID Pelanggan kosong, backend station memakai default customer.

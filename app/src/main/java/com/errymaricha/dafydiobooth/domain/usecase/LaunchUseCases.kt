@@ -43,7 +43,6 @@ class OpenManualSessionUseCase(
         additionalPrintCount: Int,
     ): LaunchSession {
         require(token.isNotBlank()) { "Token station belum tersedia" }
-        require(customerWhatsapp.isNotBlank()) { "No WA wajib diisi" }
 
         return repository.openSessionManual(
             token = token,

@@ -255,6 +255,7 @@ Coding scope:
   - `data/repository/LaunchRepositoryImpl.kt`
   - `domain/usecase/LaunchUseCases.kt`
   - `ui/launch/LaunchViewModel.kt`
+- `LaunchViewModel` sudah dibind ke `LaunchEventScreen` untuk sync pricing, additional print, final amount, dan request manual payment.
 - Poll/check status untuk waiting approval.
 - Block lanjut ke camera sebelum approved.
 
@@ -262,6 +263,7 @@ Testing:
 
 - Voucher/payment tidak muncul di mode lokal.
 - Prepare launch login device lalu sync `GET /api/device/master-data`.
+- Launch Event UI menampilkan pricing, final amount, input No WA optional, additional print count, dan tombol `Request Manual Payment`.
 - Manual session mengirim `customer_whatsapp`, `payment_method=manual`, dan `additional_print_count`.
 - Manual payment tidak bisa dilewati.
 - UAT Phase 4.

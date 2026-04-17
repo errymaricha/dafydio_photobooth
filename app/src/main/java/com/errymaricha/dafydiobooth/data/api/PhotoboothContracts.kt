@@ -156,7 +156,7 @@ data class CreateSessionRequest(
 
 @Serializable
 data class OpenManualSessionRequest(
-    @SerialName("customer_whatsapp") val customerWhatsapp: String,
+    @SerialName("customer_whatsapp") val customerWhatsapp: String? = null,
     @SerialName("payment_method") val paymentMethod: String = "manual",
     @SerialName("additional_print_count") val additionalPrintCount: Int = 0,
 )

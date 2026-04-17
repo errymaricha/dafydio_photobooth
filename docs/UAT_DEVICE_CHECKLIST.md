@@ -85,7 +85,11 @@ Checklist ini mengikuti fase coding Android agar setiap penambahan fitur bisa la
 - [ ] Payment quote mengirim `customer_id` saat ID Pelanggan diisi.
 - [ ] Create session mengirim `customer_id` saat ID Pelanggan diisi.
 - [ ] Prepare Launch berhasil login device lalu sync pricing dari `GET /api/device/master-data`.
+- [ ] Launch Event menampilkan harga photobooth dari master-data.
+- [ ] Launch Event menampilkan harga additional print dari master-data.
+- [ ] Launch Event menampilkan final amount.
 - [ ] Additional print count mengubah final amount: photobooth price + additional print price x count.
+- [ ] Tombol Request Manual Payment membuat manual session dan menampilkan status menunggu approve station.
 - [ ] Manual open session mengirim `customer_whatsapp`, `payment_method=manual`, dan `additional_print_count`.
 - [ ] Setting Event membuka setting event.
 - [ ] Voucher/payment tidak muncul di mode lokal.
