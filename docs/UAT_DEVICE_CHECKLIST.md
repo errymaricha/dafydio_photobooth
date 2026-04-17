@@ -11,6 +11,10 @@ Checklist ini mengikuti fase coding Android agar setiap penambahan fitur bisa la
 
 ## Phase 1: Dashboard Local Flow
 
+- [ ] Compose Preview tersedia untuk Dashboard Mobile.
+- [ ] Compose Preview tersedia untuk Dashboard Tablet.
+- [ ] Compose Preview tersedia untuk Settings Tablet.
+- [ ] Compose Preview tersedia untuk Finish Tablet.
 - [ ] App membuka Splash Screen.
 - [ ] Splash otomatis masuk Dashboard.
 - [ ] Dashboard menampilkan Start Now Photo.

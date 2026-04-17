@@ -47,6 +47,7 @@ Android foundation:
 - Settings mencakup station connection, camera source, external camera status, camera options, dan printer options.
 - Settings persistence tersambung ke DataStore untuk station, camera, dan printer options.
 - Station connection checker tersambung ke Station IP dan dashboard connected menu.
+- Compose preview tersedia untuk Dashboard mobile/tablet, Settings tablet, dan Finish tablet.
 - Jika station connected, Dashboard menampilkan Launch Event dan Setting Event.
 - Voucher/payment gate berjalan setelah Launch Event.
 - Unit test mapper dan integration-style test voucher -> payment -> create session.
@@ -80,11 +81,13 @@ Build:
 - Retake/done.
 - Template preview.
 - Finish actions placeholder.
+- Compose previews untuk mobile dan tablet.
 
 Testable output:
 
 - APK bisa menjalankan flow lokal tanpa koneksi station.
 - Tidak ada API call wajib.
+- Layout tablet bisa dicek dari Compose Preview.
 - UAT Phase 1 selesai.
 
 ### Phase 2: Settings Persistence

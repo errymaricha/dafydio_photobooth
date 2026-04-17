@@ -94,6 +94,21 @@ Rules:
 - Voucher/payment tidak muncul di mode lokal.
 - Voucher/payment hanya muncul setelah operator connect ke Photobooth Station lalu launch event.
 
+## Compose UI Guidance
+
+- Project memakai Jetpack Compose, bukan XML layout.
+- Target utama desain adalah tablet view, mobile tetap responsive.
+- Screen penting wajib punya preview bila layout berubah.
+- Preview minimal:
+  - Dashboard mobile.
+  - Dashboard tablet.
+  - Settings tablet.
+  - Finish tablet.
+- Gunakan state dummy untuk preview, jangan instantiate ViewModel di preview.
+- Gunakan komponen kecil yang bisa dipreview tanpa dependency runtime.
+- Tablet layout boleh memakai two-column/panel layout.
+- Mobile layout harus tetap single-column dan tidak overflow.
+
 ## Android Event Flow
 
 Event flow adalah mode online/connected yang aktif setelah Settings berhasil login/connect ke Photobooth Station.
@@ -159,6 +174,7 @@ Tujuan:
 - App selalu masuk `Splash -> Dashboard`.
 - Mode lokal bisa berjalan tanpa station/database.
 - User bisa `Start Now Photo -> pilih template -> Camera placeholder -> Capture Preview -> Retake/Done -> Template Preview -> Finish`.
+- Dashboard sudah punya responsive mobile/tablet preview.
 
 Coding scope:
 
