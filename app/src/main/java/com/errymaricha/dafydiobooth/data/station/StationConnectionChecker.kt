@@ -1,5 +1,6 @@
 package com.errymaricha.dafydiobooth.data.station
 
+import android.util.Log
 import com.errymaricha.dafydiobooth.data.api.ApiErrorBody
 import com.errymaricha.dafydiobooth.data.api.DeviceAuthRequest
 import com.errymaricha.dafydiobooth.data.api.PhotoboothApi
@@ -35,6 +36,7 @@ class StationConnectionChecker {
         }
 
         return try {
+            Log.i(TAG, "Connecting station auth: $baseUrl api/device/auth device=$deviceId")
             val api = createUnauthenticatedApi(baseUrl)
             val response = api.auth(
                 DeviceAuthRequest(
@@ -44,8 +46,10 @@ class StationConnectionChecker {
             )
             val bearerToken = response.bearerToken
             if (bearerToken.isBlank()) {
+                Log.w(TAG, "Station auth succeeded but token is empty")
                 BoothResult.Failure(BoothError.Validation("Response auth tidak berisi token"))
             } else {
+                Log.i(TAG, "Station auth succeeded: $baseUrl")
                 BoothResult.Success(
                     StationConnection(
                         baseUrl = baseUrl,
@@ -55,10 +59,13 @@ class StationConnectionChecker {
                 )
             }
         } catch (error: HttpException) {
+            Log.w(TAG, "Station auth HTTP ${error.code()}", error)
             BoothResult.Failure(error.toBoothError())
         } catch (error: IOException) {
+            Log.w(TAG, "Station auth network failed", error)
             BoothResult.Failure(BoothError.Network(error.message ?: "Station tidak bisa dijangkau"))
         } catch (error: IllegalArgumentException) {
+            Log.w(TAG, "Station auth invalid URL", error)
             BoothResult.Failure(BoothError.Validation("Format Station IP tidak valid"))
         }
     }
@@ -81,6 +88,10 @@ class StationConnectionChecker {
             422 -> BoothError.Validation(apiMessage ?: "Device credential tidak valid")
             else -> BoothError.Unknown(apiMessage ?: "Station HTTP ${code()}")
         }
+    }
+
+    private companion object {
+        const val TAG = "DafydioStation"
     }
 }
 

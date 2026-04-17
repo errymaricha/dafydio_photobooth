@@ -24,6 +24,7 @@ data class BoothUiState(
     val isLoading: Boolean = false,
     val deviceId: String = "",
     val token: String = "",
+    val authToken: String = "",
     val stationIp: String = "",
     val isStationConnected: Boolean = false,
     val voucherCode: String = "",

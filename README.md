@@ -116,6 +116,8 @@ X-Device-Id: PB-DEVICE-01
 Accept: application/json
 ```
 
+Android menyimpan API key device dan Sanctum token di field berbeda. Field Settings `API Key / Token` tetap berisi API key awal, sedangkan token Sanctum disimpan internal sebagai `authToken`.
+
 ## Commands
 
 Run unit test:

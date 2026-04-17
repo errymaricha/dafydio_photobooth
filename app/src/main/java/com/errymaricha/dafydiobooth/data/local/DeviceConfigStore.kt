@@ -17,6 +17,7 @@ private val Context.deviceConfigDataStore by preferencesDataStore(name = "device
 data class DeviceConfig(
     val deviceId: String = "",
     val token: String = "",
+    val authToken: String = "",
     val stationIp: String = BuildConfig.BASE_URL,
     val cameraSource: String = "AndroidDefault",
     val externalCameraStatus: String = "Disconnected",
@@ -36,6 +37,7 @@ data class DeviceConfig(
 class DeviceConfigStore(private val context: Context) {
     private val deviceIdKey = stringPreferencesKey("device_id")
     private val tokenKey = stringPreferencesKey("token")
+    private val authTokenKey = stringPreferencesKey("auth_token")
     private val stationIpKey = stringPreferencesKey("station_ip")
     private val cameraSourceKey = stringPreferencesKey("camera_source")
     private val externalCameraStatusKey = stringPreferencesKey("external_camera_status")
@@ -55,6 +57,7 @@ class DeviceConfigStore(private val context: Context) {
         DeviceConfig(
             deviceId = preferences[deviceIdKey].orEmpty(),
             token = preferences[tokenKey].orEmpty(),
+            authToken = preferences[authTokenKey].orEmpty(),
             stationIp = preferences[stationIpKey] ?: BuildConfig.BASE_URL,
             cameraSource = preferences[cameraSourceKey] ?: "AndroidDefault",
             externalCameraStatus = preferences[externalCameraStatusKey] ?: "Disconnected",
@@ -80,6 +83,7 @@ class DeviceConfigStore(private val context: Context) {
         context.deviceConfigDataStore.edit { preferences ->
             preferences[deviceIdKey] = deviceId
             preferences[tokenKey] = token
+            preferences[authTokenKey] = ""
         }
     }
 
@@ -87,6 +91,7 @@ class DeviceConfigStore(private val context: Context) {
         context.deviceConfigDataStore.edit { preferences ->
             preferences[deviceIdKey] = config.deviceId
             preferences[tokenKey] = config.token
+            preferences[authTokenKey] = config.authToken
             preferences[stationIpKey] = config.stationIp
             preferences[cameraSourceKey] = config.cameraSource
             preferences[externalCameraStatusKey] = config.externalCameraStatus

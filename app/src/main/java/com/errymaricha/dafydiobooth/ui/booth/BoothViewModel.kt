@@ -29,11 +29,9 @@ class BoothViewModel(
                     it.copy(
                         deviceId = config.deviceId,
                         token = config.token,
+                        authToken = config.authToken,
                         stationIp = config.stationIp,
-                        isStationConnected = it.isStationConnected &&
-                            config.deviceId == it.deviceId &&
-                            config.token == it.token &&
-                            config.stationIp == it.stationIp,
+                        isStationConnected = config.authToken.isNotBlank(),
                         cameraSource = config.cameraSource.toEnum(CameraSource.AndroidDefault),
                         externalCameraStatus = config.externalCameraStatus.toEnum(ExternalCameraStatus.Disconnected),
                         mirrorLiveView = config.mirrorLiveView,
@@ -112,11 +110,17 @@ class BoothViewModel(
         )
     }
 
-    fun updateDeviceId(value: String) = updateAndPersistConfig { it.copy(deviceId = value, errorMessage = null) }
+    fun updateDeviceId(value: String) = updateAndPersistConfig {
+        it.copy(deviceId = value, authToken = "", isStationConnected = false, errorMessage = null)
+    }
 
-    fun updateToken(value: String) = updateAndPersistConfig { it.copy(token = value, errorMessage = null) }
+    fun updateToken(value: String) = updateAndPersistConfig {
+        it.copy(token = value, authToken = "", isStationConnected = false, errorMessage = null)
+    }
 
-    fun updateStationIp(value: String) = updateAndPersistConfig { it.copy(stationIp = value, errorMessage = null) }
+    fun updateStationIp(value: String) = updateAndPersistConfig {
+        it.copy(stationIp = value, authToken = "", isStationConnected = false, errorMessage = null)
+    }
 
     fun updateVoucherCode(value: String) = _state.update { it.copy(voucherCode = value, errorMessage = null) }
 
@@ -182,8 +186,9 @@ class BoothViewModel(
             is BoothResult.Success -> {
                 val connectedState = current.copy(
                     stationIp = result.value.baseUrl,
-                    deviceId = result.value.deviceId,
-                    token = result.value.bearerToken,
+                    deviceId = current.deviceId.trim(),
+                    token = current.token.trim(),
+                    authToken = result.value.bearerToken,
                     isStationConnected = true,
                     errorMessage = null,
                 )
@@ -313,6 +318,7 @@ class BoothViewModel(
 private fun BoothUiState.toDeviceConfig() = DeviceConfig(
     deviceId = deviceId,
     token = token,
+    authToken = authToken,
     stationIp = stationIp,
     cameraSource = cameraSource.name,
     externalCameraStatus = externalCameraStatus.name,

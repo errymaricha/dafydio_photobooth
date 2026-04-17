@@ -358,6 +358,8 @@ Endpoint device:
 
 Endpoint `POST /api/device/auth` dipakai saat Settings melakukan connect ke Photobooth Station. Input token di Settings adalah API key device awal. Jika auth sukses, response Sanctum token disimpan dan dipakai sebagai bearer token untuk endpoint protected berikutnya.
 
+Jangan overwrite API key awal dengan Sanctum token. DataStore harus memisahkan API key (`token`) dan bearer token hasil auth (`authToken`).
+
 Endpoint event/payment berada di jalur connected event, setelah `Launch Event`. Endpoint ini tidak boleh dipanggil saat user menjalankan mode lokal tanpa station connection.
 
 Field yang harus dijaga:

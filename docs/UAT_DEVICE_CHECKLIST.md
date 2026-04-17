@@ -63,6 +63,7 @@ Checklist ini mengikuti fase coding Android agar setiap penambahan fitur bisa la
 - [ ] Connect memakai `POST /api/device/auth`.
 - [ ] Token input awal adalah API key device, contoh `secret-device-key`.
 - [ ] Setelah connect sukses, Android memakai Sanctum bearer token dari response.
+- [ ] Field API Key / Token tetap berisi API key awal setelah connect sukses.
 - [ ] Device ID valid diterima station.
 - [ ] Token valid diterima station.
 - [ ] Token invalid menampilkan error.

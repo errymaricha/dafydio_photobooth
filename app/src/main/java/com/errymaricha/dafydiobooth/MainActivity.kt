@@ -29,7 +29,10 @@ class MainActivity : ComponentActivity() {
         val configStore = DeviceConfigStore(applicationContext)
         val repository = ApiPhotoboothRepository(
             ApiClient.create(
-                tokenProvider = { configStore.currentConfigBlocking().token },
+                tokenProvider = {
+                    val config = configStore.currentConfigBlocking()
+                    config.authToken.ifBlank { config.token }
+                },
                 deviceIdProvider = { configStore.currentConfigBlocking().deviceId },
             ),
         )
