@@ -61,6 +61,7 @@ Checklist ini mengikuti fase coding Android agar setiap penambahan fitur bisa la
 - [ ] Input `10.10.116.4` otomatis dinormalisasi ke port `8000`.
 - [ ] Connect ke Photobooth Station berhasil dengan IP lokal.
 - [ ] Connect memakai `POST /api/device/auth`.
+- [ ] Auth request mengirim `device_id`, `device_code`, `token`, dan `api_key`.
 - [ ] Token input awal adalah API key device, contoh `secret-device-key`.
 - [ ] Setelah connect sukses, Android memakai Sanctum bearer token dari response.
 - [ ] Field API Key / Token tetap berisi API key awal setelah connect sukses.

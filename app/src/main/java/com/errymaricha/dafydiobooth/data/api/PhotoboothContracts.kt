@@ -6,9 +6,9 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class DeviceAuthRequest(
     @SerialName("device_id") val deviceId: String,
-    @SerialName("device_code") val deviceCode: String = deviceId,
+    @SerialName("device_code") val deviceCode: String,
     @SerialName("token") val token: String,
-    @SerialName("api_key") val apiKey: String = token,
+    @SerialName("api_key") val apiKey: String,
 )
 
 @Serializable

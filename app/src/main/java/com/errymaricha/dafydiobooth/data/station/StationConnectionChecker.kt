@@ -41,7 +41,9 @@ class StationConnectionChecker {
             val response = api.auth(
                 DeviceAuthRequest(
                     deviceId = deviceId.trim(),
+                    deviceCode = deviceId.trim(),
                     token = token.trim(),
+                    apiKey = token.trim(),
                 ),
             )
             val bearerToken = response.bearerToken
