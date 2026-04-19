@@ -64,6 +64,7 @@ Checklist ini mengikuti fase coding Android agar setiap penambahan fitur bisa la
 - [ ] Auth request mengirim `device_code` dan `api_key`.
 - [ ] Token input awal adalah API key device, contoh `secret-device-key`.
 - [ ] Setelah connect sukses, Android memakai Sanctum bearer token dari response.
+- [ ] Setelah connect sukses, Launch Event/master-data memakai Station IP dari Settings, bukan `BuildConfig.BASE_URL`.
 - [ ] Field API Key / Token tetap berisi API key awal setelah connect sukses.
 - [ ] Device ID valid diterima station.
 - [ ] Token valid diterima station.
@@ -90,6 +91,7 @@ Checklist ini mengikuti fase coding Android agar setiap penambahan fitur bisa la
 - [ ] Launch Event menampilkan final amount.
 - [ ] Additional print count mengubah final amount: photobooth price + additional print price x count.
 - [ ] Tombol Request Manual Payment membuat manual session dan menampilkan status menunggu approve station.
+- [ ] Tombol Request Manual Payment disable saat request/session manual sedang menunggu tanggapan station.
 - [ ] Manual open session mengirim `customer_whatsapp`, `payment_method=manual`, dan `additional_print_count`.
 - [ ] Setting Event membuka setting event.
 - [ ] Voucher/payment tidak muncul di mode lokal.
@@ -103,6 +105,8 @@ Checklist ini mengikuti fase coding Android agar setiap penambahan fitur bisa la
 - [ ] Waiting Approval tidak bisa dilewati dari Android.
 - [ ] Approval dari Photobooth Station membuka akses ke template/camera.
 - [ ] Rejected/expired approval tetap menahan user di event gate.
+- [ ] Rejected approval menampilkan notes/alasan, reviewer, dan waktu review dari Photobooth Station jika tersedia.
+- [ ] Setelah rejected approval, tombol Request Manual Payment aktif kembali untuk request ulang.
 - [ ] Check status/retry tersedia saat waiting approval.
 - [ ] Setelah approved, Android lanjut ke pilih template.
 

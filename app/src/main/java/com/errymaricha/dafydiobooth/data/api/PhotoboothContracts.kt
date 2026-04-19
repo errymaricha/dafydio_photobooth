@@ -157,7 +157,8 @@ data class CreateSessionRequest(
 @Serializable
 data class OpenManualSessionRequest(
     @SerialName("customer_whatsapp") val customerWhatsapp: String? = null,
-    @SerialName("payment_method") val paymentMethod: String = "manual",
+    @SerialName("voucher_code") val voucherCode: String? = null,
+    @SerialName("payment_method") val paymentMethod: String,
     @SerialName("additional_print_count") val additionalPrintCount: Int = 0,
 )
 
@@ -183,11 +184,28 @@ data class PaymentCheckResponse(
     @SerialName("session_id") val sessionId: String,
     @SerialName("session_code") val sessionCode: String? = null,
     @SerialName("payment_status") val paymentStatus: String,
+    @SerialName("status") val status: String? = null,
+    @SerialName("approval_status") val approvalStatus: String? = null,
+    @SerialName("review_status") val reviewStatus: String? = null,
+    @SerialName("manual_review_status") val manualReviewStatus: String? = null,
+    @SerialName("manual_payment_status") val manualPaymentStatus: String? = null,
+    @SerialName("payment_approval_status") val paymentApprovalStatus: String? = null,
     @SerialName("can_upload") val canUpload: Boolean? = null,
     @SerialName("payment_required") val paymentRequired: Boolean? = null,
     @SerialName("payment_unlocked") val paymentUnlocked: Boolean? = null,
     @SerialName("unlock_photo") val unlockPhoto: Boolean? = null,
     @SerialName("skip_reason") val skipReason: String? = null,
+    @SerialName("reject_reason") val rejectReason: String? = null,
+    @SerialName("rejection_reason") val rejectionReason: String? = null,
+    @SerialName("reason") val reason: String? = null,
+    @SerialName("message") val message: String? = null,
+    @SerialName("notes") val notes: String? = null,
+    @SerialName("review_notes") val reviewNotes: String? = null,
+    @SerialName("reviewed_at") val reviewedAt: String? = null,
+    @SerialName("reviewer") val reviewer: String? = null,
+    @SerialName("reviewer_name") val reviewerName: String? = null,
+    @SerialName("reviewed_by") val reviewedBy: String? = null,
+    @SerialName("reviewed_by_name") val reviewedByName: String? = null,
     @SerialName("voucher_code") val voucherCode: String? = null,
     @SerialName("voucher_type") val voucherType: String? = null,
 )

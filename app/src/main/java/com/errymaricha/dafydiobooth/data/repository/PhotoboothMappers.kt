@@ -47,7 +47,7 @@ fun PaymentCheckResponse.toDomain() = PaymentStatus(
     sessionId = sessionId,
     sessionCode = sessionCode,
     paymentStatus = paymentStatus,
-    canUpload = canUpload ?: paymentUnlocked ?: unlockPhoto ?: paymentRequired == false,
+    canUpload = canUpload == true || paymentUnlocked == true || unlockPhoto == true,
     paymentRequired = paymentRequired ?: paymentStatus != "paid",
-    unlockPhoto = unlockPhoto ?: paymentUnlocked ?: paymentRequired == false,
+    unlockPhoto = unlockPhoto == true || paymentUnlocked == true,
 )

@@ -115,6 +115,7 @@ Build:
 - Device auth dengan token. Done.
 - Connected/disconnected state. Done.
 - Dashboard conditional menu: Launch Event dan Setting Event. Done.
+- Dynamic station base URL for connected device endpoints. Done.
 
 Testable output:
 
@@ -150,6 +151,8 @@ Testable output:
 - Payment quote dan create session membawa `customer_id` jika operator mengisi ID Pelanggan.
 - Jika ID Pelanggan kosong, backend station memakai default customer.
 - Manual payment menunggu station approval.
+- Tombol manual payment disable saat request terkirim agar tidak membuat session ganda.
+- Jika station reject manual payment, Android membaca status review/rejection dari `payment-check`, menampilkan notes/reviewer/reviewed time, dan mengaktifkan tombol manual payment kembali untuk request ulang.
 - Android continues to template only after `payment-check` returns approved/unlocked status.
 - UAT Phase 4 selesai.
 
@@ -600,6 +603,7 @@ Voucher And Payment Gate:
 - Bypass voucher bisa unlock capture sesuai backend rule.
 - Voucher/payment sekarang berada di connected event flow setelah Launch Event.
 - Manual payment harus menunggu approval dari Photobooth Station.
+- Manual payment rejected harus dianggap terminal walaupun `payment_status` masih `pending` jika response membawa `review_status`/`approval_status` rejected atau `reviewed_at` plus notes/reason.
 
 ## Backend Contract Priorities
 

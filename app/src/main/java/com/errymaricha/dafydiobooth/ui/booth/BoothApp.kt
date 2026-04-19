@@ -161,13 +161,21 @@ data class BoothActions(
 private fun LaunchViewModel.toActions() = LaunchActions(
     onWhatsappChanged = ::onWhatsappChanged,
     onAdditionalPrintChanged = ::onAdditionalPrintChanged,
+    onVoucherCodeChanged = ::onVoucherCodeChanged,
+    checkVoucherAndQuote = ::checkVoucherAndQuote,
+    quoteQrPayment = ::quoteQrPayment,
     submitManualPaymentRequest = ::submitManualPaymentRequest,
+    checkManualPaymentApproval = ::checkManualPaymentApproval,
 )
 
 data class LaunchActions(
     val onWhatsappChanged: (String) -> Unit = {},
     val onAdditionalPrintChanged: (Int) -> Unit = {},
+    val onVoucherCodeChanged: (String) -> Unit = {},
+    val checkVoucherAndQuote: () -> Unit = {},
+    val quoteQrPayment: () -> Unit = {},
     val submitManualPaymentRequest: () -> Unit = {},
+    val checkManualPaymentApproval: () -> Unit = {},
 )
 
 @Composable
@@ -201,6 +209,13 @@ fun BoothApp(
         }
     }
 
+    LaunchedEffect(launchState.shouldNavigateToTemplates) {
+        if (launchState.shouldNavigateToTemplates) {
+            actions.startNowPhoto()
+            launchViewModel.consumeTemplateNavigation()
+        }
+    }
+
     Scaffold { innerPadding ->
         NavHost(
             navController = navController,
@@ -216,13 +231,18 @@ fun BoothApp(
                 DashboardScreen(state = state, actions = actions)
             }
             composable(BoothRoute.TemplatePicker.route) {
-                TemplatePickerScreen(state = state, templates = viewModel.defaultTemplates, actions = actions)
+                TemplatePickerScreen(
+                    state = state,
+                    launchState = launchState,
+                    templates = viewModel.defaultTemplates,
+                    actions = actions,
+                )
             }
             composable(BoothRoute.CustomTemplate.route) {
                 CustomTemplateScreen(state = state, actions = actions)
             }
             composable(BoothRoute.Camera.route) {
-                CameraScreen(state = state, actions = actions)
+                CameraScreen(state = state, launchState = launchState, actions = actions)
             }
             composable(BoothRoute.CapturePreview.route) {
                 CapturePreviewScreen(state = state, actions = actions)
@@ -362,7 +382,7 @@ private fun LaunchEventScreen(
     ScreenFrame(title = "Launch Event", state = state, actions = actions) {
         Text("Station: ${state.stationIp}")
         Text("Device: ${state.deviceId}")
-        Text("Voucher/payment gate aktif untuk event connected.")
+        Text("Pembayaran event connected.")
         if (launchState.loading) {
             CircularProgressIndicator()
         }
@@ -395,21 +415,60 @@ private fun LaunchEventScreen(
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
+        OutlinedTextField(
+            value = launchState.voucherCode,
+            onValueChange = launchActions.onVoucherCodeChanged,
+            label = { Text("Kode Voucher") },
+            placeholder = { Text("Kosongkan jika tanpa voucher") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(
+                onClick = launchActions.checkVoucherAndQuote,
+                enabled = !launchState.loading && launchState.voucherCode.isNotBlank(),
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("Cek Voucher")
+            }
+            OutlinedButton(
+                onClick = launchActions.quoteQrPayment,
+                enabled = !launchState.loading,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("QR Code")
+            }
+        }
+        launchState.quote?.let { quote ->
+            Text("Subtotal: ${quote.currency} ${quote.subtotalAmount ?: launchState.finalAmount.toLong()}")
+            Text("Diskon: ${quote.currency} ${quote.discountAmount ?: 0}")
+            Text("Total bayar: ${quote.currency} ${quote.amount}", fontWeight = FontWeight.Bold)
+            Text("Payment URL: ${quote.paymentUrl ?: "-"}")
+        }
         launchState.message?.let { message ->
             Text(message, color = MaterialTheme.colorScheme.primary)
         }
+        Text(
+            text = "Kode Session: ${launchState.session?.sessionCode ?: "-"}",
+            fontWeight = FontWeight.Bold,
+        )
+        Text("Approval: ${launchState.approvalStatus ?: launchState.session?.paymentStatus ?: "-"}")
         launchState.error?.let { error ->
             Text(error, color = MaterialTheme.colorScheme.error)
         }
         OutlinedButton(
             onClick = launchActions.submitManualPaymentRequest,
-            enabled = !launchState.loading,
+            enabled = launchState.canSubmitManualPayment,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text("Request Manual Payment")
+            Text(if (launchState.isManualPaymentWaiting) "Menunggu Approval Station" else "Pembayaran Manual")
         }
-        Button(onClick = actions.startLaunchEventGate, modifier = Modifier.fillMaxWidth()) {
-            Text("Start Event Gate")
+        OutlinedButton(
+            onClick = launchActions.checkManualPaymentApproval,
+            enabled = !launchState.loading && launchState.session != null,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Check Approval")
         }
     }
 }
@@ -503,7 +562,8 @@ private fun PaymentGateScreen(state: BoothUiState, actions: BoothActions) {
 private fun WaitingApprovalScreen(state: BoothUiState, actions: BoothActions) {
     ScreenFrame(title = "Waiting Approval", state = state, actions = actions) {
         EventStatus(state)
-        Text("Session: ${state.session?.sessionId ?: "-"}")
+        Text("Kode Session: ${state.session?.sessionCode ?: "-"}", fontWeight = FontWeight.Bold)
+        Text("Session ID: ${state.session?.sessionId ?: "-"}")
         Text("Payment: ${state.paymentStatus?.paymentStatus ?: state.session?.paymentStatus ?: "pending"}")
         Text("Approval dilakukan dari Photobooth Station.")
         Button(onClick = actions.checkPayment, enabled = !state.isLoading, modifier = Modifier.fillMaxWidth()) {
@@ -513,8 +573,17 @@ private fun WaitingApprovalScreen(state: BoothUiState, actions: BoothActions) {
 }
 
 @Composable
-private fun TemplatePickerScreen(state: BoothUiState, templates: List<String>, actions: BoothActions) {
+private fun TemplatePickerScreen(
+    state: BoothUiState,
+    launchState: LaunchUiState,
+    templates: List<String>,
+    actions: BoothActions,
+) {
     ScreenFrame(title = "Pilih Template", state = state, actions = actions) {
+        Text(
+            text = "Kode Session: ${launchState.session?.sessionCode ?: state.session?.sessionCode ?: "-"}",
+            fontWeight = FontWeight.Bold,
+        )
         templates.forEach { template ->
             OutlinedButton(
                 onClick = { actions.selectTemplate(template) },
@@ -537,9 +606,18 @@ private fun CustomTemplateScreen(state: BoothUiState, actions: BoothActions) {
 }
 
 @Composable
-private fun CameraScreen(state: BoothUiState, actions: BoothActions) {
+private fun CameraScreen(
+    state: BoothUiState,
+    launchState: LaunchUiState,
+    actions: BoothActions,
+) {
     ScreenFrame(title = "Camera", state = state, actions = actions) {
         CameraSurface(state)
+        Text(
+            text = "Kode Session: ${launchState.session?.sessionCode ?: state.session?.sessionCode ?: "-"}",
+            fontWeight = FontWeight.Bold,
+        )
+        Text("ID Pelanggan / No WA: ${launchState.customerWhatsapp.ifBlank { state.customerId.ifBlank { "-" } }}")
         Text("Template: ${state.selectedTemplate ?: "-"}")
         Text("Camera: ${if (state.cameraSource == CameraSource.AndroidDefault) "Android default" else "External Canon"}")
         Text("Timer: ${state.countdownSeconds}s")

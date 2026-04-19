@@ -127,6 +127,8 @@ GET /api/device/master-data
 Authorization: Bearer <sanctum-token>
 ```
 
+Setelah connected, request device memakai Station URL dari Settings/DataStore. Ini mencegah Launch Event memakai fallback build URL seperti `dev-api.dafydio.local`.
+
 ## Commands
 
 Run unit test:

@@ -13,6 +13,7 @@ import com.errymaricha.dafydiobooth.data.repository.ApiPhotoboothRepository
 import com.errymaricha.dafydiobooth.data.repository.LaunchRepositoryImpl
 import com.errymaricha.dafydiobooth.data.station.StationConnectionChecker
 import com.errymaricha.dafydiobooth.domain.usecase.CalculateFinalAmountUseCase
+import com.errymaricha.dafydiobooth.domain.usecase.CheckLaunchPaymentUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.CheckPaymentUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.ConfirmPaymentUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.CreateSessionUseCase
@@ -20,6 +21,8 @@ import com.errymaricha.dafydiobooth.domain.usecase.OpenManualSessionUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.PhotoboothUseCases
 import com.errymaricha.dafydiobooth.domain.usecase.PrepareLaunchUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.RequestPaymentQuoteUseCase
+import com.errymaricha.dafydiobooth.domain.usecase.RequestLaunchPaymentQuoteUseCase
+import com.errymaricha.dafydiobooth.domain.usecase.VerifyLaunchVoucherUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.VerifyVoucherUseCase
 import com.errymaricha.dafydiobooth.ui.booth.BoothApp
 import com.errymaricha.dafydiobooth.ui.booth.BoothViewModel
@@ -35,6 +38,7 @@ class MainActivity : ComponentActivity() {
 
         val configStore = DeviceConfigStore(applicationContext)
         val api = ApiClient.create(
+            stationBaseUrlProvider = { configStore.currentConfigBlocking().stationIp },
             tokenProvider = {
                 val config = configStore.currentConfigBlocking()
                 config.authToken.ifBlank { config.token }
@@ -58,6 +62,9 @@ class MainActivity : ComponentActivity() {
         val launchFactory = LaunchViewModelFactory(
             prepareLaunch = PrepareLaunchUseCase(launchRepository),
             openManualSession = OpenManualSessionUseCase(launchRepository),
+            verifyLaunchVoucher = VerifyLaunchVoucherUseCase(launchRepository),
+            requestLaunchPaymentQuote = RequestLaunchPaymentQuoteUseCase(launchRepository),
+            checkLaunchPayment = CheckLaunchPaymentUseCase(launchRepository),
             calculateFinalAmount = CalculateFinalAmountUseCase(),
         )
 

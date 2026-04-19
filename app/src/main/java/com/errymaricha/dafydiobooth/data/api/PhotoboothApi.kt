@@ -16,10 +16,16 @@ interface PhotoboothApi {
     ): DeviceMasterDataResponse
 
     @POST("api/device/vouchers/verify")
-    suspend fun verifyVoucher(@Body request: VerifyVoucherRequest): VerifyVoucherResponse
+    suspend fun verifyVoucher(
+        @Body request: VerifyVoucherRequest,
+        @Header("Authorization") bearerToken: String? = null,
+    ): VerifyVoucherResponse
 
     @POST("api/device/payment-quote")
-    suspend fun paymentQuote(@Body request: PaymentQuoteRequest): PaymentQuoteResponse
+    suspend fun paymentQuote(
+        @Body request: PaymentQuoteRequest,
+        @Header("Authorization") bearerToken: String? = null,
+    ): PaymentQuoteResponse
 
     @POST("api/device/sessions")
     suspend fun createSession(@Body request: CreateSessionRequest): CreateSessionResponse
@@ -31,7 +37,10 @@ interface PhotoboothApi {
     ): SessionCreateResponse
 
     @GET("api/device/sessions/{id}/payment-check")
-    suspend fun paymentCheck(@Path("id") sessionId: String): PaymentCheckResponse
+    suspend fun paymentCheck(
+        @Path("id") sessionId: String,
+        @Header("Authorization") bearerToken: String? = null,
+    ): PaymentCheckResponse
 
     @POST("api/device/sessions/{id}/confirm-payment")
     suspend fun confirmPayment(

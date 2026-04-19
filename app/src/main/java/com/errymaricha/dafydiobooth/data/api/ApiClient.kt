@@ -16,6 +16,7 @@ object ApiClient {
 
     fun create(
         baseUrl: String = BuildConfig.BASE_URL,
+        stationBaseUrlProvider: () -> String = { "" },
         tokenProvider: () -> String = { "" },
         deviceIdProvider: () -> String = { "" },
     ): PhotoboothApi {
@@ -27,6 +28,11 @@ object ApiClient {
             }
         }
         val client = OkHttpClient.Builder()
+            .addInterceptor(
+                StationBaseUrlInterceptor(
+                    stationBaseUrlProvider = stationBaseUrlProvider,
+                ),
+            )
             .addInterceptor(
                 DeviceAuthInterceptor(
                     tokenProvider = tokenProvider,

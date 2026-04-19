@@ -224,6 +224,7 @@ Coding scope:
 - Station connection state.
 - HTTP ping/handshake station memakai configured Station IP.
 - Auth header tetap memakai token/device id.
+- Shared `ApiClient` memakai `StationBaseUrlInterceptor`; setelah connect, endpoint device diarahkan ke `stationIp` DataStore agar Launch Event tidak jatuh ke `BuildConfig.BASE_URL` seperti `dev-api.dafydio.local`.
 - Dashboard conditional menu.
 - Error state untuk offline/401/403.
 
@@ -258,6 +259,8 @@ Coding scope:
 - `LaunchViewModel` sudah dibind ke `LaunchEventScreen` untuk sync pricing, additional print, final amount, dan request manual payment.
 - Poll/check status untuk waiting approval.
 - Block lanjut ke camera sebelum approved.
+- Saat manual payment pending, tombol request manual payment wajib disabled untuk mencegah create session ganda.
+- Saat station/admin reject manual payment, Android harus membaca status review/rejection dari `payment-check`, menampilkan notes/reviewer/reviewed time jika tersedia, menghentikan polling, dan mengaktifkan tombol request manual payment kembali.
 
 Testing:
 
@@ -266,6 +269,7 @@ Testing:
 - Launch Event UI menampilkan pricing, final amount, input No WA optional, additional print count, dan tombol `Request Manual Payment`.
 - Manual session mengirim `customer_whatsapp`, `payment_method=manual`, dan `additional_print_count`.
 - Manual payment tidak bisa dilewati.
+- Manual payment rejected tidak boleh tetap tampil pending jika `payment-check` membawa `review_status`/`approval_status` rejected atau `reviewed_at` plus notes/reason.
 - UAT Phase 4.
 
 ### Phase 5: Real Camera Capture
