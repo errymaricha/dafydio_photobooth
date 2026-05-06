@@ -2,36 +2,73 @@ package com.errymaricha.dafydiobooth.ui.booth
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import android.graphics.BitmapFactory
+import android.os.Build
+import com.errymaricha.dafydiobooth.data.api.TemplateSlotDto
 import com.errymaricha.dafydiobooth.data.local.DeviceConfig
 import com.errymaricha.dafydiobooth.data.local.DeviceConfigStore
+import com.errymaricha.dafydiobooth.data.local.StoredTemplate
+import com.errymaricha.dafydiobooth.data.local.TemplateAssetStore
+import com.errymaricha.dafydiobooth.data.local.TemplateSqliteStore
+import com.errymaricha.dafydiobooth.data.session.SessionStateManager
 import com.errymaricha.dafydiobooth.data.station.StationConnectionChecker
+import com.errymaricha.dafydiobooth.station.model.HeartbeatCapabilities
+import com.errymaricha.dafydiobooth.station.model.HeartbeatRequest
+import com.errymaricha.dafydiobooth.station.local.HeartbeatStatus
+import com.errymaricha.dafydiobooth.station.network.AppResult
+import com.errymaricha.dafydiobooth.station.repository.DeviceRepository
+import com.errymaricha.dafydiobooth.station.local.HeartbeatStatusStore
+import com.errymaricha.dafydiobooth.station.security.TokenStore
+import com.errymaricha.dafydiobooth.BuildConfig
 import com.errymaricha.dafydiobooth.domain.model.BoothError
 import com.errymaricha.dafydiobooth.domain.model.BoothResult
+import com.errymaricha.dafydiobooth.domain.model.BoothSession
+import com.errymaricha.dafydiobooth.domain.model.LaunchSession
 import com.errymaricha.dafydiobooth.domain.usecase.PhotoboothUseCases
+import java.io.File
+import java.net.URI
+import kotlin.random.Random
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.Json
 
 class BoothViewModel(
     private val useCases: PhotoboothUseCases,
     private val configStore: DeviceConfigStore,
+    private val templateSqliteStore: TemplateSqliteStore,
+    private val templateAssetStore: TemplateAssetStore,
     private val stationConnectionChecker: StationConnectionChecker,
+    private val sessionStateManager: SessionStateManager,
+    private val renderedOutputComposer: TemplateRenderedOutputComposer,
+    private val heartbeatStatusStore: HeartbeatStatusStore,
+    private val stationTokenStore: TokenStore,
+    private val stationDeviceRepository: DeviceRepository,
 ) : ViewModel() {
     private val _state = MutableStateFlow(BoothUiState())
     val state: StateFlow<BoothUiState> = _state.asStateFlow()
+    private val json = Json { ignoreUnknownKeys = true }
+    private var cachedTemplates: List<StoredTemplate> = emptyList()
+    private var cachedTemplateSlotsById: Map<String, List<TemplateSlotLayout>> = emptyMap()
+    private var cachedTemplateSlotCountById: Map<String, Int> = emptyMap()
 
     init {
         viewModelScope.launch {
             configStore.config.collect { config ->
+                sessionStateManager.updateConnection(
+                    stationIp = config.stationIp,
+                    deviceId = config.deviceId,
+                    apiKey = config.token,
+                    authToken = config.authToken,
+                )
                 _state.update {
                     it.copy(
-                        deviceId = config.deviceId,
-                        token = config.token,
-                        authToken = config.authToken,
-                        stationIp = config.stationIp,
-                        isStationConnected = config.authToken.isNotBlank(),
                         cameraSource = config.cameraSource.toEnum(CameraSource.AndroidDefault),
                         externalCameraStatus = config.externalCameraStatus.toEnum(ExternalCameraStatus.Disconnected),
                         mirrorLiveView = config.mirrorLiveView,
@@ -49,23 +86,357 @@ class BoothViewModel(
                 }
             }
         }
+        viewModelScope.launch {
+            sessionStateManager.state.collect { session ->
+                _state.update {
+                    it.copy(
+                        stationIp = session.stationIp,
+                        deviceId = session.deviceId,
+                        token = session.apiKey,
+                        authToken = session.authToken,
+                        isStationConnected = session.isStationConnected,
+                        customerId = session.customerId.ifBlank { it.customerId },
+                        session = session.toBoothSession() ?: it.session,
+                    )
+                }
+            }
+        }
+        viewModelScope.launch {
+            templateSqliteStore.templates.collect { templates ->
+                cachedTemplates = templates
+                val parsedById = withContext(Dispatchers.Default) {
+                    templates.associate { stored ->
+                        stored.templateId to parseSlots(stored.slotsJson)
+                    }
+                }
+                cachedTemplateSlotsById = parsedById
+                cachedTemplateSlotCountById = parsedById.mapValues { (_, slots) ->
+                    slots.size.coerceAtLeast(1)
+                }
+                _state.update {
+                    val selected = it.selectedTemplate
+                        ?.let { selectedName -> templates.firstOrNull { template -> template.templateName == selectedName } }
+                    val slotCount = selected?.templateId?.let { id -> cachedTemplateSlotCountById[id] } ?: it.templateSlotCount
+                    val parsedSlots = selected?.templateId?.let { id -> cachedTemplateSlotsById[id] }.orEmpty()
+                    val templateItems = templates.map { stored ->
+                        val readiness = buildTemplateAssetReadiness(stored)
+                        TemplateListItem(
+                            templateId = stored.templateId,
+                            templateName = stored.templateName,
+                            templateCode = stored.templateCode,
+                            category = stored.category,
+                            paperSize = stored.paperSize,
+                            thumbnailUrl = stored.thumbnailLocalPath,
+                            thumbnailReady = readiness.thumbnailReady,
+                            previewReady = readiness.previewReady,
+                            overlayReady = readiness.overlayReady,
+                            slotCount = cachedTemplateSlotCountById[stored.templateId] ?: 1,
+                        )
+                    }
+                    it.copy(
+                        availableTemplates = templates.map(StoredTemplate::templateName),
+                        availableTemplateItems = templateItems,
+                        templatesUpdated = templates.isNotEmpty(),
+                        templateSlotCount = slotCount.coerceAtLeast(1),
+                        selectedTemplatePreviewUrl = selected?.previewUrl?.let { url -> resolveAssetUrl(url, it.stationIp) }
+                            ?: it.selectedTemplatePreviewUrl,
+                        selectedTemplatePreviewLocalPath = selected?.previewLocalPath ?: it.selectedTemplatePreviewLocalPath,
+                        selectedTemplateOverlayUrl = selected?.overlayUrl?.let { url -> resolveAssetUrl(url, it.stationIp) }
+                            ?: it.selectedTemplateOverlayUrl,
+                        selectedTemplateOverlayLocalPath = selected?.overlayLocalPath ?: it.selectedTemplateOverlayLocalPath,
+                        selectedTemplateCanvasWidth = selected?.canvasWidth ?: it.selectedTemplateCanvasWidth,
+                        selectedTemplateCanvasHeight = selected?.canvasHeight ?: it.selectedTemplateCanvasHeight,
+                        selectedTemplateSlots = if (parsedSlots.isEmpty()) it.selectedTemplateSlots else parsedSlots,
+                    )
+                }
+            }
+        }
+        viewModelScope.launch {
+            heartbeatStatusStore.status.collect { hb ->
+                _state.update {
+                    it.copy(
+                        heartbeatLocalIp = hb.localIp,
+                        heartbeatAppVersion = hb.appVersion,
+                        heartbeatOsVersion = hb.os,
+                        heartbeatCapabilities = hb.capabilities,
+                        heartbeatLastAt = hb.lastHeartbeatAt,
+                        heartbeatLastSyncAt = hb.lastSyncAt,
+                        heartbeatLastResult = hb.lastResult,
+                    )
+                }
+            }
+        }
     }
-
-    val defaultTemplates = listOf("Classic 2 Slot", "Clean Portrait", "Event Strip", "Square Party")
 
     fun continueFromSplash() = _state.update { it.copy(step = BoothStep.Dashboard, errorMessage = null) }
 
     fun openDashboard() = _state.update { it.copy(step = BoothStep.Dashboard, errorMessage = null) }
 
-    fun startNowPhoto() = _state.update { it.copy(step = BoothStep.TemplatePicker, errorMessage = null) }
+    fun startNowPhoto() = _state.update { current ->
+        val hasLocalTemplate = current.availableTemplateItems.isNotEmpty() || current.availableTemplates.isNotEmpty()
+        if (hasLocalTemplate) {
+            sessionStateManager.clearSession()
+            current.copy(
+                step = BoothStep.TemplatePicker,
+                localOnlySession = true,
+                errorMessage = null,
+            )
+        } else {
+            sessionStateManager.clearSession()
+            current.copy(
+                selectedTemplateId = null,
+                selectedTemplate = "Quick Photo",
+                selectedTemplatePaperSize = null,
+                selectedTemplatePreviewUrl = null,
+                selectedTemplatePreviewLocalPath = null,
+                selectedTemplateOverlayUrl = null,
+                selectedTemplateOverlayLocalPath = null,
+                selectedTemplateCanvasWidth = 0,
+                selectedTemplateCanvasHeight = 0,
+                selectedTemplateSlots = emptyList(),
+                step = BoothStep.Camera,
+                nextCaptureIndex = 1,
+                templateSlotCount = 1,
+                capturedPhotoName = null,
+                capturedPhotoPath = null,
+                capturedPhotosBySlot = emptyMap(),
+                uploadedSessionPhotosBySlot = emptyMap(),
+                localOnlySession = true,
+                eventStatusMessage = if (current.isStationConnected) {
+                    "Template lokal belum tersedia. Masuk Quick Photo mode."
+                } else {
+                    "Offline mode aktif. Masuk Quick Photo mode."
+                },
+                errorMessage = null,
+            )
+        }
+    }
 
     fun openCustomTemplate() = _state.update { it.copy(step = BoothStep.CustomTemplate, errorMessage = null) }
 
     fun openSettings() = _state.update { it.copy(step = BoothStep.Settings, errorMessage = null) }
 
+    fun sendHeartbeatNow(localIp: String) = viewModelScope.launch {
+        if (!isValidIpv4(localIp)) {
+            _state.update { it.copy(errorMessage = "IP lokal belum valid untuk heartbeat: $localIp") }
+            return@launch
+        }
+        val now = java.time.Instant.now().toString()
+        val request = HeartbeatRequest(
+            deviceType = "android",
+            localIp = localIp,
+            batteryPercent = 0,
+            networkStrength = 0,
+            appVersion = BuildConfig.VERSION_NAME,
+            osName = "Android",
+            osVersion = Build.VERSION.RELEASE,
+            capabilities = HeartbeatCapabilities(
+                camera = true,
+                printer = false,
+                offlineQueue = true,
+                localRender = true,
+            ),
+            metrics = emptyMap(),
+            lastSyncAt = now,
+        )
+        when (val result = stationDeviceRepository.sendHeartbeat(request)) {
+            is AppResult.Success -> {
+                heartbeatStatusStore.save(
+                    HeartbeatStatus(
+                        localIp = request.localIp,
+                        appVersion = request.appVersion,
+                        os = "${request.osName} ${request.osVersion}",
+                        capabilities = "camera=true, printer=false, offline_queue=true, local_render=true",
+                        lastHeartbeatAt = now,
+                        lastSyncAt = now,
+                        lastResult = "success",
+                    ),
+                )
+                _state.update { it.copy(eventStatusMessage = "Heartbeat sent.", errorMessage = null) }
+            }
+            is AppResult.Failure -> {
+                heartbeatStatusStore.save(
+                    HeartbeatStatus(
+                        localIp = request.localIp,
+                        appVersion = request.appVersion,
+                        os = "${request.osName} ${request.osVersion}",
+                        capabilities = "camera=true, printer=false, offline_queue=true, local_render=true",
+                        lastHeartbeatAt = now,
+                        lastSyncAt = now,
+                        lastResult = "failed",
+                    ),
+                )
+                _state.update { it.copy(errorMessage = "Heartbeat gagal: ${result.error}") }
+            }
+        }
+    }
+
+    private fun isValidIpv4(ip: String): Boolean {
+        val regex = Regex("""^((25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)\.){3}(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)$""")
+        return regex.matches(ip.trim())
+    }
+
+    fun disconnectStation() = updateAndPersistConfig {
+        stationTokenStore.clear()
+        sessionStateManager.clearSession()
+        sessionStateManager.updateConnection(
+            stationIp = it.stationIp,
+            deviceId = it.deviceId,
+            apiKey = it.token,
+            authToken = "",
+        )
+        buildDisconnectedState(it)
+    }
+
+    fun refreshTemplates() = launchRequest {
+        val current = state.value
+        if (!current.isStationConnected) {
+            _state.update { it.copy(errorMessage = "Connect Photobooth Station dulu") }
+            return@launchRequest
+        }
+        when (val result = useCases.refreshTemplates(current.authToken)) {
+            is BoothResult.Success -> {
+                val existingById = cachedTemplates.associateBy { it.templateId }
+                var templates = result.value.map {
+                    val existing = existingById[it.templateId]
+                    val thumbnailChanged = existing?.thumbnailUrl != it.thumbnailUrl
+                    val previewChanged = existing?.previewUrl != it.previewUrl
+                    val overlayChanged = existing?.overlayUrl != it.overlayUrl
+                    val thumbnailLocalPath = templateAssetStore.cacheThumbnail(
+                        templateId = it.templateId,
+                        thumbnailUrl = it.thumbnailUrl,
+                        stationBaseUrl = current.stationIp,
+                        authToken = current.authToken,
+                        forceRefresh = thumbnailChanged,
+                    ) ?: existing?.thumbnailLocalPath
+                    val previewLocalPath = templateAssetStore.cachePreview(
+                        templateId = it.templateId,
+                        previewUrl = it.previewUrl,
+                        stationBaseUrl = current.stationIp,
+                        authToken = current.authToken,
+                        forceRefresh = previewChanged,
+                    ) ?: thumbnailLocalPath ?: existing?.previewLocalPath
+                    val overlayLocalPath = templateAssetStore.cacheOverlay(
+                        templateId = it.templateId,
+                        overlayUrl = it.overlayUrl,
+                        stationBaseUrl = current.stationIp,
+                        authToken = current.authToken,
+                        forceRefresh = overlayChanged,
+                    ) ?: existing?.overlayLocalPath
+                    StoredTemplate(
+                        templateId = it.templateId,
+                        templateCode = it.templateCode,
+                        templateName = it.templateName,
+                        category = it.category,
+                        paperSize = it.paperSize,
+                        canvasWidth = it.canvasWidth,
+                        canvasHeight = it.canvasHeight,
+                        thumbnailUrl = it.thumbnailUrl,
+                        thumbnailLocalPath = thumbnailLocalPath,
+                        previewUrl = it.previewUrl,
+                        previewLocalPath = previewLocalPath,
+                        overlayUrl = it.overlayUrl,
+                        overlayLocalPath = overlayLocalPath,
+                        configJson = it.configJson,
+                        slotsJson = it.slotsJson,
+                    )
+                }
+                val sourceById = result.value.associateBy { it.templateId }
+                repeat(2) {
+                    val incompleteIds = templates
+                        .filterNot(::isTemplateAssetReady)
+                        .map { it.templateId }
+                        .toSet()
+                    if (incompleteIds.isEmpty()) return@repeat
+                    templates = templates.map { stored ->
+                        if (!incompleteIds.contains(stored.templateId)) return@map stored
+                        val source = sourceById[stored.templateId] ?: return@map stored
+                        val thumbnailLocalPath = if (source.thumbnailUrl.isNullOrBlank()) {
+                            stored.thumbnailLocalPath
+                        } else {
+                            templateAssetStore.cacheThumbnail(
+                                templateId = source.templateId,
+                                thumbnailUrl = source.thumbnailUrl,
+                                stationBaseUrl = current.stationIp,
+                                authToken = current.authToken,
+                            ) ?: stored.thumbnailLocalPath
+                        }
+                        val previewLocalPath = if (source.previewUrl.isNullOrBlank()) {
+                            stored.previewLocalPath ?: stored.thumbnailLocalPath
+                        } else {
+                            templateAssetStore.cachePreview(
+                                templateId = source.templateId,
+                                previewUrl = source.previewUrl,
+                                stationBaseUrl = current.stationIp,
+                                authToken = current.authToken,
+                            ) ?: stored.thumbnailLocalPath ?: stored.previewLocalPath
+                        }
+                        val overlayLocalPath = if (source.overlayUrl.isNullOrBlank()) {
+                            stored.overlayLocalPath
+                        } else {
+                            templateAssetStore.cacheOverlay(
+                                templateId = source.templateId,
+                                overlayUrl = source.overlayUrl,
+                                stationBaseUrl = current.stationIp,
+                                authToken = current.authToken,
+                            ) ?: stored.overlayLocalPath
+                        }
+                        stored.copy(
+                            thumbnailLocalPath = thumbnailLocalPath,
+                            previewLocalPath = previewLocalPath,
+                            overlayLocalPath = overlayLocalPath,
+                        )
+                    }
+                }
+                templateSqliteStore.replaceTemplates(templates)
+                val totalTemplates = templates.size
+                val readyTemplates = templates.count(::isTemplateAssetReady)
+                val corruptedOrMissing = (totalTemplates - readyTemplates).coerceAtLeast(0)
+                val missingTemplateNames = templates
+                    .filterNot(::isTemplateAssetReady)
+                    .map { it.templateName }
+                    .take(3)
+                _state.update {
+                    val templateItems = templates.map { stored ->
+                        val readiness = buildTemplateAssetReadiness(stored)
+                        TemplateListItem(
+                            templateId = stored.templateId,
+                            templateName = stored.templateName,
+                            templateCode = stored.templateCode,
+                            category = stored.category,
+                            paperSize = stored.paperSize,
+                            thumbnailUrl = stored.thumbnailLocalPath,
+                            thumbnailReady = readiness.thumbnailReady,
+                            previewReady = readiness.previewReady,
+                            overlayReady = readiness.overlayReady,
+                            slotCount = cachedTemplateSlotCountById[stored.templateId] ?: 1,
+                        )
+                    }
+                    it.copy(
+                        availableTemplates = templates.map(StoredTemplate::templateName),
+                        availableTemplateItems = templateItems,
+                        templatesUpdated = templates.isNotEmpty(),
+                        eventStatusMessage = if (corruptedOrMissing == 0) {
+                            "Template terupdate. Asset lokal siap di device: $readyTemplates/$totalTemplates template."
+                        } else {
+                            val sample = if (missingTemplateNames.isEmpty()) "" else " Contoh: ${missingTemplateNames.joinToString(", ")}."
+                            "Template terupdate, tapi $corruptedOrMissing template asset belum valid/corrupt.$sample Cek jaringan lalu Update Template lagi."
+                        },
+                        errorMessage = if (corruptedOrMissing == 0) {
+                            null
+                        } else {
+                            "Asset template lokal belum lengkap/valid: $readyTemplates/$totalTemplates siap."
+                        },
+                    )
+                }
+            }
+            is BoothResult.Failure -> showError(result.error)
+        }
+    }
+
     fun openLaunchEvent() = _state.update {
         if (it.isStationConnected) {
-            it.copy(step = BoothStep.LaunchEvent, errorMessage = null, eventStatusMessage = null)
+            it.copy(step = BoothStep.LaunchEvent, localOnlySession = false, errorMessage = null, eventStatusMessage = null)
         } else {
             it.copy(errorMessage = "Connect Photobooth Station dulu")
         }
@@ -73,41 +444,477 @@ class BoothViewModel(
 
     fun openSettingEvent() = _state.update {
         if (it.isStationConnected) {
-            it.copy(step = BoothStep.SettingEvent, errorMessage = null)
+            it.copy(step = BoothStep.SettingEvent, localOnlySession = false, errorMessage = null)
         } else {
             it.copy(errorMessage = "Connect Photobooth Station dulu")
         }
     }
 
-    fun selectTemplate(template: String) = _state.update {
-        it.copy(selectedTemplate = template, step = BoothStep.Camera, errorMessage = null)
+    fun syncLaunchSession(session: LaunchSession?, customerId: String, authToken: String?) {
+        sessionStateManager.updateFromLaunchSession(session, customerId, authToken)
+        _state.update { it.copy(nextCaptureIndex = 1, errorMessage = null) }
+    }
+
+    fun selectTemplate(templateId: String) {
+        _state.update {
+            val selected = cachedTemplates.firstOrNull { stored -> stored.templateId == templateId }
+            val slotCount = selected?.templateId?.let { id -> cachedTemplateSlotCountById[id] } ?: 1
+            val slots = selected?.templateId?.let { id -> cachedTemplateSlotsById[id] }.orEmpty()
+            val localPreviewPath = selected?.previewLocalPath
+                ?: selected?.templateId?.let { id -> templateAssetStore.getCachedPreviewPath(id) }
+            val localOverlayPath = selected?.overlayLocalPath
+                ?: selected?.templateId?.let { id -> templateAssetStore.getCachedOverlayPath(id) }
+            it.copy(
+                selectedTemplateId = selected?.templateId,
+                selectedTemplate = selected?.templateName ?: it.selectedTemplate,
+                selectedTemplatePaperSize = selected?.paperSize,
+                selectedTemplatePreviewUrl = selected?.previewUrl?.let { url -> resolveAssetUrl(url, it.stationIp) },
+                selectedTemplatePreviewLocalPath = localPreviewPath,
+                selectedTemplateOverlayUrl = selected?.overlayUrl?.let { url -> resolveAssetUrl(url, it.stationIp) },
+                selectedTemplateOverlayLocalPath = localOverlayPath,
+                selectedTemplateCanvasWidth = selected?.canvasWidth ?: 0,
+                selectedTemplateCanvasHeight = selected?.canvasHeight ?: 0,
+                selectedTemplateSlots = slots,
+                step = BoothStep.Camera,
+                nextCaptureIndex = 1,
+                templateSlotCount = slotCount.coerceAtLeast(1),
+                capturedPhotoName = null,
+                capturedPhotoPath = null,
+                capturedPhotosBySlot = emptyMap(),
+                uploadedSessionPhotosBySlot = emptyMap(),
+                errorMessage = null,
+            )
+        }
+        ensureTemplateAssetsCached(templateId)
     }
 
     fun saveCustomTemplate(name: String) = _state.update {
-        it.copy(selectedTemplate = name.ifBlank { "Custom Template" }, step = BoothStep.Camera, errorMessage = null)
+        it.copy(
+            selectedTemplate = name.ifBlank { "Custom Template" },
+            selectedTemplateId = null,
+            selectedTemplatePaperSize = null,
+            selectedTemplatePreviewUrl = null,
+            selectedTemplatePreviewLocalPath = null,
+            selectedTemplateOverlayUrl = null,
+            selectedTemplateOverlayLocalPath = null,
+            selectedTemplateCanvasWidth = 0,
+            selectedTemplateCanvasHeight = 0,
+            selectedTemplateSlots = emptyList(),
+            step = BoothStep.Camera,
+            nextCaptureIndex = 1,
+            templateSlotCount = 1,
+            capturedPhotoName = null,
+            capturedPhotoPath = null,
+            capturedPhotosBySlot = emptyMap(),
+            uploadedSessionPhotosBySlot = emptyMap(),
+            errorMessage = null,
+        )
     }
 
     fun capturePhoto() = _state.update {
         it.copy(capturedPhotoName = "capture-${System.currentTimeMillis()}.jpg", step = BoothStep.CapturePreview)
     }
 
-    fun retakePhoto() = _state.update { it.copy(step = BoothStep.Camera, capturedPhotoName = null) }
+    fun capturePhoto(filePath: String) = _state.update {
+        val name = filePath.substringAfterLast('/').substringAfterLast('\\')
+        it.copy(capturedPhotoName = name, capturedPhotoPath = filePath, step = BoothStep.CapturePreview, errorMessage = null)
+    }
 
-    fun acceptCapturePreview() = _state.update { it.copy(step = BoothStep.TemplatePreview) }
+    fun retakePhoto() = _state.update { it.copy(step = BoothStep.Camera, capturedPhotoName = null, capturedPhotoPath = null) }
 
-    fun finishSession() = _state.update { it.copy(step = BoothStep.Finish) }
+    fun acceptCapturePreview() = launchRequest {
+        val current = state.value
+        val requiredCaptures = current.templateSlotCount.coerceAtLeast(1)
+        val capturePath = current.capturedPhotoPath
+        val session = sessionStateManager.snapshot()
+        if (capturePath.isNullOrBlank()) {
+            proceedAfterCaptureAccepted(
+                current = current,
+                requiredCaptures = requiredCaptures,
+                successMessage = "Foto #${current.nextCaptureIndex} diterima.",
+                capturePath = capturePath,
+            )
+            return@launchRequest
+        }
+        if (current.localOnlySession || !current.isStationConnected || session.sessionId.isNullOrBlank()) {
+            proceedAfterCaptureAccepted(
+                current = current,
+                requiredCaptures = requiredCaptures,
+                successMessage = "Foto #${current.nextCaptureIndex} tersimpan lokal.",
+                capturePath = capturePath,
+            )
+            return@launchRequest
+        }
+
+        _state.update {
+            it.copy(
+                eventStatusMessage = "Mengirim foto #${it.nextCaptureIndex} ke Photobooth Station...",
+                errorMessage = null,
+            )
+        }
+        when (
+            val result = useCases.uploadCapture(
+                authToken = session.authToken,
+                deviceId = session.deviceId,
+                sessionId = session.sessionId,
+                captureIndex = current.nextCaptureIndex,
+                slotIndex = current.nextCaptureIndex,
+                photoFile = File(capturePath),
+            )
+        ) {
+            is BoothResult.Success -> {
+                val uploadedId = result.value.sessionPhotoId
+                _state.update { st ->
+                    st.copy(
+                        uploadedSessionPhotosBySlot = if (uploadedId.isNullOrBlank()) {
+                            st.uploadedSessionPhotosBySlot
+                        } else {
+                            st.uploadedSessionPhotosBySlot + (current.nextCaptureIndex to uploadedId)
+                        },
+                    )
+                }
+                proceedAfterCaptureAccepted(
+                current = current,
+                requiredCaptures = requiredCaptures,
+                successMessage = "Foto #${current.nextCaptureIndex} berhasil dikirim.",
+                capturePath = capturePath,
+            )
+            }
+            is BoothResult.Failure -> {
+                val message = when (result.error) {
+                    is BoothError.Unauthorized -> "Upload capture gagal (401): ${result.error.message}"
+                    is BoothError.Forbidden -> "Upload capture gagal (403): ${result.error.message}"
+                    is BoothError.Validation -> {
+                        val detail = result.error.message
+                        if (detail.contains("(409)")) {
+                            "Upload capture gagal (409): $detail"
+                        } else {
+                            "Upload capture gagal (422): $detail"
+                        }
+                    }
+                    is BoothError.Network -> "Upload capture gagal (network): ${result.error.message}"
+                    is BoothError.Unknown -> "Upload capture gagal: ${result.error.message}"
+                }
+                _state.update {
+                    it.copy(
+                        step = BoothStep.CapturePreview,
+                        eventStatusMessage = "Foto belum terkirim ke Photobooth Station.",
+                        errorMessage = message,
+                    )
+                }
+            }
+        }
+    }
+
+    fun finishSession() = launchRequest {
+        val current = state.value
+        val requiredCaptures = current.templateSlotCount.coerceAtLeast(1)
+        if (current.capturedPhotosBySlot.size < requiredCaptures) {
+            _state.update {
+                it.copy(
+                    errorMessage = "Capture belum lengkap (${current.capturedPhotosBySlot.size}/$requiredCaptures).",
+                )
+            }
+            return@launchRequest
+        }
+        val session = sessionStateManager.snapshot()
+        if (current.localOnlySession) {
+            _state.update {
+                it.copy(
+                    step = BoothStep.Finish,
+                    eventStatusMessage = "Session selesai (local-only mode). Tidak ada data dikirim ke Photobooth Station.",
+                    errorMessage = null,
+                )
+            }
+            return@launchRequest
+        }
+        val missingUploadedSlots = (1..requiredCaptures)
+            .filterNot { current.uploadedSessionPhotosBySlot.containsKey(it) }
+        if (current.isStationConnected && session.sessionId != null && missingUploadedSlots.isNotEmpty()) {
+            _state.update {
+                it.copy(
+                    step = BoothStep.CapturePreview,
+                    errorMessage = "Upload slot belum lengkap: ${missingUploadedSlots.joinToString(", ")}. Ulangi capture slot tersebut.",
+                )
+            }
+            return@launchRequest
+        }
+        val renderItems = current.uploadedSessionPhotosBySlot
+            .toList()
+            .sortedBy { it.first }
+            .map { (slotIndex, sessionPhotoId) ->
+                com.errymaricha.dafydiobooth.domain.model.RenderItem(
+                    sessionPhotoId = sessionPhotoId,
+                    slotIndex = slotIndex,
+                )
+            }
+        if (!current.isStationConnected || session.sessionId.isNullOrBlank()) {
+            _state.update {
+                it.copy(
+                    step = BoothStep.Finish,
+                    eventStatusMessage = "Preview selesai (mode lokal).",
+                    errorMessage = null,
+                )
+            }
+            return@launchRequest
+        }
+
+        _state.update { it.copy(eventStatusMessage = "Menyiapkan hasil preview final...", errorMessage = null) }
+        val renderedFile = renderedOutputComposer.compose(current)
+        if (renderedFile == null) {
+            val missingPreview = current.selectedTemplatePreviewLocalPath.isNullOrBlank() && !current.selectedTemplatePreviewUrl.isNullOrBlank()
+            val missingOverlay = current.selectedTemplateOverlayLocalPath.isNullOrBlank() && !current.selectedTemplateOverlayUrl.isNullOrBlank()
+            val renderError = when {
+                missingPreview && missingOverlay -> "Render preview lokal gagal. Preview dan overlay template belum tersedia di device."
+                missingPreview -> "Render preview lokal gagal. Preview template belum tersedia di device."
+                missingOverlay -> "Render preview lokal gagal. Overlay template belum tersedia di device."
+                else -> "Render preview lokal gagal. Periksa slot/template lalu coba lagi."
+            }
+            _state.update {
+                it.copy(
+                    step = BoothStep.TemplatePreview,
+                    errorMessage = renderError,
+                )
+            }
+            return@launchRequest
+        }
+
+        _state.update { it.copy(eventStatusMessage = "Finalisasi session ke Photobooth Station...", errorMessage = null) }
+        when (
+            val completeResult = useCases.completeSession(
+                authToken = session.authToken,
+                deviceId = session.deviceId,
+                sessionId = session.sessionId,
+            )
+        ) {
+            is BoothResult.Success -> {
+                val templateId = current.selectedTemplateId.orEmpty()
+                if (templateId.isBlank()) {
+                    _state.update {
+                        it.copy(
+                            step = BoothStep.TemplatePreview,
+                            errorMessage = "Template ID tidak ditemukan untuk proses edit job.",
+                        )
+                    }
+                    if (renderedFile.exists()) renderedFile.delete()
+                    return@launchRequest
+                }
+                _state.update { it.copy(eventStatusMessage = "Membuat edit job...", errorMessage = null) }
+                when (
+                    val editJobResult = useCases.createEditJob(
+                        authToken = session.authToken,
+                        deviceId = session.deviceId,
+                        sessionId = session.sessionId,
+                        templateId = templateId,
+                        items = renderItems,
+                    )
+                ) {
+                    is BoothResult.Success -> {
+                        _state.update {
+                            it.copy(
+                                eventStatusMessage = "Mengirim rendered output final...",
+                                errorMessage = null,
+                            )
+                        }
+                        when (
+                            val uploadResult = useCases.uploadRenderedOutput(
+                                authToken = session.authToken,
+                                deviceId = session.deviceId,
+                                sessionId = session.sessionId,
+                                editJobId = editJobResult.value,
+                                photoFile = renderedFile,
+                                width = current.selectedTemplateCanvasWidth.takeIf { it > 0 },
+                                height = current.selectedTemplateCanvasHeight.takeIf { it > 0 },
+                                dpi = 300,
+                                force = true,
+                            )
+                        ) {
+                            is BoothResult.Success -> _state.update {
+                                it.copy(
+                                    step = BoothStep.Finish,
+                                    eventStatusMessage = "Rendered output berhasil dikirim ke Photobooth Station.",
+                                    errorMessage = null,
+                                )
+                            }
+                            is BoothResult.Failure -> {
+                                val message = when (uploadResult.error) {
+                                    is BoothError.Unauthorized -> "Kirim rendered output gagal (401): ${uploadResult.error.message}"
+                                    is BoothError.Forbidden -> "Kirim rendered output gagal (403): ${uploadResult.error.message}"
+                                    is BoothError.Validation -> "Kirim rendered output gagal (422): ${uploadResult.error.message}"
+                                    is BoothError.Network -> "Kirim rendered output gagal (network): ${uploadResult.error.message}"
+                                    is BoothError.Unknown -> "Kirim rendered output gagal: ${uploadResult.error.message}"
+                                }
+                                _state.update {
+                                    it.copy(
+                                        step = BoothStep.TemplatePreview,
+                                        errorMessage = message,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    is BoothResult.Failure -> {
+                        val message = when (editJobResult.error) {
+                            is BoothError.Unauthorized -> "Create edit job gagal (401): ${editJobResult.error.message}"
+                            is BoothError.Forbidden -> "Create edit job gagal (403): ${editJobResult.error.message}"
+                            is BoothError.Validation -> "Create edit job gagal (422): ${editJobResult.error.message}"
+                            is BoothError.Network -> "Create edit job gagal (network): ${editJobResult.error.message}"
+                            is BoothError.Unknown -> "Create edit job gagal: ${editJobResult.error.message}"
+                        }
+                        _state.update {
+                            it.copy(
+                                step = BoothStep.TemplatePreview,
+                                errorMessage = message,
+                            )
+                        }
+                    }
+                }
+            }
+            is BoothResult.Failure -> {
+                val message = when (completeResult.error) {
+                    is BoothError.Unauthorized -> "Finalisasi session gagal (401): ${completeResult.error.message}"
+                    is BoothError.Forbidden -> "Finalisasi session gagal (403): ${completeResult.error.message}"
+                    is BoothError.Validation -> "Finalisasi session gagal (422): ${completeResult.error.message}"
+                    is BoothError.Network -> "Finalisasi session gagal (network): ${completeResult.error.message}"
+                    is BoothError.Unknown -> "Finalisasi session gagal: ${completeResult.error.message}"
+                }
+                _state.update {
+                    it.copy(
+                        step = BoothStep.TemplatePreview,
+                        errorMessage = message,
+                    )
+                }
+            }
+        }
+        if (renderedFile.exists()) {
+            renderedFile.delete()
+        }
+    }
 
     fun newSession() = _state.update {
+        sessionStateManager.clearSession()
         it.copy(
             step = BoothStep.Dashboard,
+            selectedTemplateId = null,
             selectedTemplate = null,
+            selectedTemplatePaperSize = null,
+            selectedTemplatePreviewUrl = null,
+            selectedTemplatePreviewLocalPath = null,
+            selectedTemplateOverlayUrl = null,
+            selectedTemplateOverlayLocalPath = null,
+            selectedTemplateCanvasWidth = 0,
+            selectedTemplateCanvasHeight = 0,
+            selectedTemplateSlots = emptyList(),
             capturedPhotoName = null,
+            capturedPhotoPath = null,
+            capturedPhotosBySlot = emptyMap(),
+            uploadedSessionPhotosBySlot = emptyMap(),
+            nextCaptureIndex = 1,
+            templateSlotCount = 1,
+            localOnlySession = false,
             voucher = null,
             quote = null,
             session = null,
             paymentStatus = null,
+            mockPrintStatus = MockPrintStatus.Idle,
+            mockPrintMessage = null,
             errorMessage = null,
         )
+    }
+
+    fun downloadResult() = launchRequest {
+        val current = state.value
+        val renderState = prepareStateForRender(current)
+        val renderedFile = renderedOutputComposer.compose(renderState)
+        if (renderedFile == null) {
+            _state.update {
+                it.copy(
+                    errorMessage = "Download gagal: overlay template tidak bisa dimuat.",
+                )
+            }
+            return@launchRequest
+        }
+        val savedPath = renderedOutputComposer.saveToGallery(renderedFile)
+        if (renderedFile.exists()) {
+            renderedFile.delete()
+        }
+        if (savedPath.isNullOrBlank()) {
+            _state.update {
+                it.copy(errorMessage = "Download gagal: file tidak bisa disimpan ke perangkat.")
+            }
+            return@launchRequest
+        }
+        _state.update {
+            it.copy(
+                eventStatusMessage = "File berhasil disimpan: $savedPath",
+                errorMessage = null,
+            )
+        }
+    }
+
+    fun onStoragePermissionDenied() {
+        _state.update {
+            it.copy(
+                errorMessage = "Izin storage belum diizinkan. Aktifkan permission storage untuk menyimpan hasil download.",
+            )
+        }
+    }
+
+    fun triggerMockPrint() {
+        val current = state.value
+        if (current.mockPrintStatus == MockPrintStatus.Queued) return
+        viewModelScope.launch {
+            _state.update {
+                it.copy(
+                    mockPrintStatus = MockPrintStatus.Queued,
+                    mockPrintMessage = "Mock print job queued...",
+                )
+            }
+            delay(900)
+            val success = Random.nextInt(100) >= 15
+            _state.update {
+                if (success) {
+                    it.copy(
+                        mockPrintStatus = MockPrintStatus.Sent,
+                        mockPrintMessage = "Mock print sent successfully.",
+                    )
+                } else {
+                    it.copy(
+                        mockPrintStatus = MockPrintStatus.Failed,
+                        mockPrintMessage = "Mock print failed. Coba lagi.",
+                    )
+                }
+            }
+        }
+    }
+
+    private suspend fun prepareStateForRender(current: BoothUiState): BoothUiState {
+        val hasOverlay = !current.selectedTemplateOverlayLocalPath.isNullOrBlank() || !current.selectedTemplateOverlayUrl.isNullOrBlank()
+        if (!hasOverlay) return current
+        if (!current.selectedTemplateOverlayLocalPath.isNullOrBlank()) {
+            val localFile = File(current.selectedTemplateOverlayLocalPath)
+            val decoded = runCatching {
+                BitmapFactory.decodeFile(localFile.absolutePath)?.also { it.recycle() }
+            }.getOrNull()
+            if (decoded != null) return current
+            runCatching { localFile.delete() }
+        }
+        val templateId = current.selectedTemplateId ?: return current
+        val cachedPath = templateAssetStore.cacheOverlay(
+            templateId = templateId,
+            overlayUrl = current.selectedTemplateOverlayUrl,
+            stationBaseUrl = current.stationIp,
+            authToken = current.authToken,
+        ) ?: return current
+        templateSqliteStore.updateOverlayLocalPath(templateId, cachedPath)
+        _state.update {
+            if (it.selectedTemplateId == templateId) {
+                it.copy(selectedTemplateOverlayLocalPath = cachedPath)
+            } else {
+                it
+            }
+        }
+        return state.value
     }
 
     fun updateDeviceId(value: String) = updateAndPersistConfig {
@@ -136,6 +943,7 @@ class BoothViewModel(
         if (it.isStationConnected) {
             it.copy(
                 step = BoothStep.VoucherCheck,
+                localOnlySession = false,
                 voucher = null,
                 quote = null,
                 session = null,
@@ -164,12 +972,45 @@ class BoothViewModel(
 
     fun setImageQuality(value: ImageQuality) = updateAndPersistConfig { it.copy(imageQuality = value) }
 
+    fun updateDetectedCameras(hasBack: Boolean, hasFront: Boolean) = _state.update {
+        val useBack = when {
+            it.useBackCamera && hasBack -> true
+            it.useFrontCamera && !hasFront && hasBack -> true
+            else -> false
+        }
+        val useFront = when {
+            it.useFrontCamera && hasFront -> true
+            it.useBackCamera && !hasBack && hasFront -> true
+            else -> false
+        }
+        it.copy(
+            hasBackCamera = hasBack,
+            hasFrontCamera = hasFront,
+            useBackCamera = useBack,
+            useFrontCamera = useFront,
+        )
+    }
+
     fun setUseBackCamera(value: Boolean) = updateAndPersistConfig {
-        it.copy(useBackCamera = value, useFrontCamera = !value)
+        if (value && !it.hasBackCamera) {
+            it
+        } else {
+            it.copy(
+                useBackCamera = value,
+                useFrontCamera = if (value) false else it.useFrontCamera && it.hasFrontCamera,
+            )
+        }
     }
 
     fun setUseFrontCamera(value: Boolean) = updateAndPersistConfig {
-        it.copy(useFrontCamera = value, useBackCamera = !value)
+        if (value && !it.hasFrontCamera) {
+            it
+        } else {
+            it.copy(
+                useFrontCamera = value,
+                useBackCamera = if (value) false else it.useBackCamera && it.hasBackCamera,
+            )
+        }
     }
 
     fun setDenoisePhoto(value: Boolean) = updateAndPersistConfig { it.copy(denoisePhoto = value) }
@@ -183,15 +1024,15 @@ class BoothViewModel(
     fun setDefaultPrinting(value: Boolean) = updateAndPersistConfig { it.copy(defaultPrinting = value) }
 
     fun setPrintUsePhotoboothStation(value: Boolean) = updateAndPersistConfig {
-        it.copy(printUsePhotoboothStation = value)
+        if (it.localOnlySession) {
+            it.copy(printUsePhotoboothStation = false)
+        } else {
+            it.copy(printUsePhotoboothStation = value)
+        }
     }
 
     fun loginDevice() = launchRequest {
         val current = state.value
-        if (current.stationIp.isBlank()) {
-            _state.update { it.copy(errorMessage = "Station IP wajib diisi") }
-            return@launchRequest
-        }
         if (current.deviceId.isBlank()) {
             _state.update { it.copy(errorMessage = "Device ID wajib diisi") }
             return@launchRequest
@@ -213,6 +1054,15 @@ class BoothViewModel(
                     errorMessage = null,
                 )
                 configStore.save(connectedState.toDeviceConfig())
+                sessionStateManager.updateConnection(
+                    stationIp = connectedState.stationIp,
+                    deviceId = connectedState.deviceId,
+                    apiKey = connectedState.token,
+                    authToken = connectedState.authToken,
+                )
+                if (connectedState.authToken.isNotBlank()) {
+                    stationTokenStore.saveToken(connectedState.authToken)
+                }
                 _state.update { connectedState }
             }
             is BoothResult.Failure -> showError(result.error)
@@ -282,7 +1132,17 @@ class BoothViewModel(
             )
         ) {
             is BoothResult.Success -> _state.update {
-                it.copy(session = result.value, step = BoothStep.Camera, errorMessage = null)
+                sessionStateManager.updateFromBoothSession(result.value, current.customerId)
+                it.copy(
+                    session = result.value,
+                    step = BoothStep.Camera,
+                    nextCaptureIndex = 1,
+                    capturedPhotosBySlot = emptyMap(),
+                    uploadedSessionPhotosBySlot = emptyMap(),
+                    capturedPhotoName = null,
+                    capturedPhotoPath = null,
+                    errorMessage = null,
+                )
             }
             is BoothResult.Failure -> showError(result.error)
         }
@@ -337,9 +1197,15 @@ class BoothViewModel(
             )
         ) {
             is BoothResult.Success -> _state.update {
+                sessionStateManager.updateFromBoothSession(result.value, current.customerId)
                 it.copy(
                     session = result.value,
                     step = BoothStep.WaitingApproval,
+                    nextCaptureIndex = 1,
+                    capturedPhotosBySlot = emptyMap(),
+                    uploadedSessionPhotosBySlot = emptyMap(),
+                    capturedPhotoName = null,
+                    capturedPhotoPath = null,
                     eventStatusMessage = "Manual payment dibuat. Tunggu approval dari Photobooth Station.",
                     errorMessage = null,
                 )
@@ -366,9 +1232,15 @@ class BoothViewModel(
             )
         ) {
             is BoothResult.Success -> _state.update {
+                sessionStateManager.updateFromBoothSession(result.value, current.customerId)
                 it.copy(
                     session = result.value,
                     step = BoothStep.TemplatePicker,
+                    nextCaptureIndex = 1,
+                    capturedPhotosBySlot = emptyMap(),
+                    uploadedSessionPhotosBySlot = emptyMap(),
+                    capturedPhotoName = null,
+                    capturedPhotoPath = null,
                     eventStatusMessage = "Event siap. Silakan pilih template.",
                     errorMessage = null,
                 )
@@ -418,24 +1290,251 @@ class BoothViewModel(
     }
 
     private fun showError(error: BoothError) {
-        val message = when (error) {
-            BoothError.Unauthorized -> "401: Device tidak terotorisasi. Login ulang."
-            BoothError.Forbidden -> "403: Device tidak punya akses."
+        val rawMessage = when (error) {
+            is BoothError.Unauthorized -> "401: ${error.message}"
+            is BoothError.Forbidden -> "403: ${error.message}"
             is BoothError.Validation -> "422: ${error.message}"
             is BoothError.Network -> "Network: ${error.message}"
             is BoothError.Unknown -> error.message
         }
-        _state.update { it.copy(errorMessage = message) }
+        if (isInvalidCustomerWaError(rawMessage)) {
+            _state.update {
+                it.copy(
+                    errorMessage = null,
+                    eventStatusMessage = "No WA tidak valid",
+                )
+            }
+            return
+        }
+        _state.update { it.copy(errorMessage = rawMessage) }
+    }
+
+    private fun isInvalidCustomerWaError(message: String): Boolean {
+        val lower = message.lowercase()
+        val hasTargetField = lower.contains("customer") || lower.contains("whatsapp") || lower.contains("wa")
+        val hasInvalidHint = lower.contains("invalid")
+            || lower.contains("tidak valid")
+            || lower.contains("not valid")
+            || lower.contains("tidak ditemukan")
+            || lower.contains("not found")
+            || lower.contains("unregistered")
+            || lower.contains("tidak terdaftar")
+        return hasTargetField && hasInvalidHint
     }
 
     private fun updateAndPersistConfig(transform: (BoothUiState) -> BoothUiState) {
         val updated = transform(state.value)
         _state.value = updated
+        sessionStateManager.updateConnection(
+            stationIp = updated.stationIp,
+            deviceId = updated.deviceId,
+            apiKey = updated.token,
+            authToken = updated.authToken,
+        )
         viewModelScope.launch {
             configStore.save(updated.toDeviceConfig())
         }
     }
+
+    private fun proceedAfterCaptureAccepted(
+        current: BoothUiState,
+        requiredCaptures: Int,
+        successMessage: String,
+        capturePath: String?,
+    ) {
+        val updatedPhotos = if (!capturePath.isNullOrBlank()) {
+            current.capturedPhotosBySlot + (current.nextCaptureIndex to capturePath)
+        } else {
+            current.capturedPhotosBySlot
+        }
+        val hasMoreCapture = current.nextCaptureIndex < requiredCaptures
+        if (hasMoreCapture) {
+            _state.update {
+                it.copy(
+                    nextCaptureIndex = current.nextCaptureIndex + 1,
+                    capturedPhotoName = null,
+                    capturedPhotoPath = null,
+                    capturedPhotosBySlot = updatedPhotos,
+                    step = BoothStep.Camera,
+                    eventStatusMessage = "$successMessage Lanjut foto #${current.nextCaptureIndex + 1}/$requiredCaptures.",
+                    errorMessage = null,
+                )
+            }
+            return
+        }
+        _state.update {
+            it.copy(
+                capturedPhotoName = null,
+                capturedPhotoPath = null,
+                capturedPhotosBySlot = updatedPhotos,
+                step = BoothStep.TemplatePreview,
+                eventStatusMessage = successMessage,
+                errorMessage = null,
+            )
+        }
+    }
+
+    private fun ensureTemplateAssetsCached(templateId: String) {
+        val selected = cachedTemplates.firstOrNull { it.templateId == templateId } ?: return
+        val current = state.value
+        viewModelScope.launch {
+            val thumbnailLocalPath = if (selected.thumbnailLocalPath.isNullOrBlank() && !selected.thumbnailUrl.isNullOrBlank()) {
+                templateAssetStore.cacheThumbnail(
+                    templateId = templateId,
+                    thumbnailUrl = selected.thumbnailUrl,
+                    stationBaseUrl = current.stationIp,
+                    authToken = current.authToken,
+                )
+            } else {
+                selected.thumbnailLocalPath
+            }
+            val previewLocalPath = if (selected.previewLocalPath.isNullOrBlank() && !selected.previewUrl.isNullOrBlank()) {
+                templateAssetStore.cachePreview(
+                    templateId = templateId,
+                    previewUrl = selected.previewUrl,
+                    stationBaseUrl = current.stationIp,
+                    authToken = current.authToken,
+                )
+            } else {
+                selected.previewLocalPath
+            }
+            val overlayLocalPath = if (selected.overlayLocalPath.isNullOrBlank() && !selected.overlayUrl.isNullOrBlank()) {
+                templateAssetStore.cacheOverlay(
+                    templateId = templateId,
+                    overlayUrl = selected.overlayUrl,
+                    stationBaseUrl = current.stationIp,
+                    authToken = current.authToken,
+                )
+            } else {
+                selected.overlayLocalPath
+            }
+            if (thumbnailLocalPath.isNullOrBlank() && previewLocalPath.isNullOrBlank() && overlayLocalPath.isNullOrBlank()) return@launch
+            val updatedTemplates = cachedTemplates.map { item ->
+                if (item.templateId == templateId) {
+                    item.copy(
+                        thumbnailLocalPath = thumbnailLocalPath ?: item.thumbnailLocalPath,
+                        previewLocalPath = previewLocalPath ?: item.previewLocalPath,
+                        overlayLocalPath = overlayLocalPath ?: item.overlayLocalPath,
+                    )
+                } else {
+                    item
+                }
+            }
+            cachedTemplates = updatedTemplates
+            templateSqliteStore.replaceTemplates(updatedTemplates)
+            _state.update {
+                if (it.selectedTemplateId == templateId) {
+                    it.copy(
+                        selectedTemplatePreviewLocalPath = previewLocalPath ?: it.selectedTemplatePreviewLocalPath,
+                        selectedTemplateOverlayLocalPath = overlayLocalPath ?: it.selectedTemplateOverlayLocalPath,
+                    )
+                } else {
+                    it
+                }
+            }
+        }
+    }
+
+    private fun parseSlotCount(slotsJson: String): Int {
+        return runCatching {
+            json.decodeFromString(
+                ListSerializer(TemplateSlotDto.serializer()),
+                slotsJson,
+            ).size
+        }
+            .getOrElse { 1 }
+            .coerceAtLeast(1)
+    }
+
+    private fun parseSlots(slotsJson: String): List<TemplateSlotLayout> {
+        return runCatching {
+            json.decodeFromString(
+                ListSerializer(TemplateSlotDto.serializer()),
+                slotsJson,
+            ).sortedBy { it.slotIndex }
+                .map {
+                    TemplateSlotLayout(
+                        slotIndex = it.slotIndex,
+                        x = it.x,
+                        y = it.y,
+                        width = it.width,
+                        height = it.height,
+                        rotation = it.rotation,
+                        borderRadius = it.borderRadius,
+                    )
+                }
+        }.getOrElse { emptyList() }
+    }
+
+    private fun isTemplateAssetReady(stored: StoredTemplate): Boolean {
+        val readiness = buildTemplateAssetReadiness(stored)
+        return readiness.thumbnailReady && readiness.previewReady && readiness.overlayReady
+    }
+
+    private fun buildTemplateAssetReadiness(stored: StoredTemplate): TemplateAssetReadiness {
+        val thumbReady = if (stored.thumbnailUrl.isNullOrBlank()) true else templateAssetStore.isLocalImageValid(stored.thumbnailLocalPath)
+        val previewReady = if (stored.previewUrl.isNullOrBlank()) {
+            true
+        } else {
+            templateAssetStore.isLocalImageValid(stored.previewLocalPath)
+                || templateAssetStore.isLocalImageValid(stored.thumbnailLocalPath)
+        }
+        val overlayReady = if (stored.overlayUrl.isNullOrBlank()) true else templateAssetStore.isLocalImageValid(stored.overlayLocalPath)
+        return TemplateAssetReadiness(
+            thumbnailReady = thumbReady,
+            previewReady = previewReady,
+            overlayReady = overlayReady,
+        )
+    }
+
+    private fun resolveAssetUrl(rawUrl: String, stationBase: String): String {
+        val trimmed = rawUrl.trim()
+        if (trimmed.isBlank()) return rawUrl
+        val base = runCatching { URI(stationBase.trim()) }.getOrNull()
+        val uri = runCatching { URI(trimmed) }.getOrNull()
+        if (uri?.isAbsolute == true) {
+            val host = uri.host?.lowercase()
+            val isLocalHost = host == "localhost" || host == "127.0.0.1" || host == "0.0.0.0"
+            if (isLocalHost && base != null && !base.host.isNullOrBlank()) {
+                return runCatching {
+                    URI(
+                        uri.scheme ?: base.scheme,
+                        uri.userInfo,
+                        base.host,
+                        if (uri.port != -1) uri.port else base.port,
+                        uri.path,
+                        uri.query,
+                        uri.fragment,
+                    ).toString()
+                }.getOrElse { trimmed }
+            }
+            return trimmed
+        }
+        if (base == null) return trimmed
+        return runCatching { base.resolve(trimmed).toString() }.getOrElse { trimmed }
+    }
 }
+
+internal fun buildDisconnectedState(current: BoothUiState): BoothUiState {
+    return current.copy(
+        authToken = "",
+        isStationConnected = false,
+        session = null,
+        voucher = null,
+        quote = null,
+        paymentStatus = null,
+        uploadedSessionPhotosBySlot = emptyMap(),
+        eventStatusMessage = "Disconnected dari Photobooth Station.",
+        errorMessage = null,
+        step = BoothStep.Settings,
+    )
+}
+
+private data class TemplateAssetReadiness(
+    val thumbnailReady: Boolean,
+    val previewReady: Boolean,
+    val overlayReady: Boolean,
+)
 
 private fun BoothUiState.toDeviceConfig() = DeviceConfig(
     deviceId = deviceId,
@@ -459,4 +1558,25 @@ private fun BoothUiState.toDeviceConfig() = DeviceConfig(
 
 private inline fun <reified T : Enum<T>> String.toEnum(default: T): T {
     return enumValues<T>().firstOrNull { it.name == this } ?: default
+}
+
+private fun LaunchSession.toBoothSession() = BoothSession(
+    sessionId = sessionId,
+    sessionCode = sessionCode,
+    uploadUrl = uploadUrl,
+    paymentStatus = paymentStatus,
+    paymentRequired = paymentRequired,
+    unlockPhoto = unlockPhoto,
+)
+
+private fun com.errymaricha.dafydiobooth.data.session.SessionState.toBoothSession(): BoothSession? {
+    val id = sessionId ?: return null
+    return BoothSession(
+        sessionId = id,
+        sessionCode = sessionCode,
+        uploadUrl = uploadUrl,
+        paymentStatus = paymentStatus ?: "pending",
+        paymentRequired = paymentRequired ?: true,
+        unlockPhoto = unlockPhoto ?: false,
+    )
 }

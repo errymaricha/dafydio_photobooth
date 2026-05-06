@@ -51,6 +51,7 @@ class LaunchRepositoryImpl(
         return LaunchSession(
             sessionId = response.sessionId,
             sessionCode = response.sessionCode,
+            uploadUrl = response.uploadUrl,
             paymentStatus = response.paymentStatus,
             paymentRequired = response.paymentRequired ?: response.paymentStatus != "paid",
             unlockPhoto = response.unlockPhoto ?: response.paymentStatus == "paid",

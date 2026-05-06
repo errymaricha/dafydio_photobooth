@@ -7,10 +7,14 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.errymaricha.dafydiobooth.BuildConfig
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.Json
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.runBlocking
 
 private val Context.deviceConfigDataStore by preferencesDataStore(name = "device_config")
 
@@ -35,6 +39,7 @@ data class DeviceConfig(
 )
 
 class DeviceConfigStore(private val context: Context) {
+    private val json = Json { ignoreUnknownKeys = true }
     private val deviceIdKey = stringPreferencesKey("device_id")
     private val tokenKey = stringPreferencesKey("token")
     private val authTokenKey = stringPreferencesKey("auth_token")
@@ -52,6 +57,7 @@ class DeviceConfigStore(private val context: Context) {
     private val shutterSoundKey = booleanPreferencesKey("shutter_sound")
     private val defaultPrintingKey = booleanPreferencesKey("default_printing")
     private val printUsePhotoboothStationKey = booleanPreferencesKey("print_use_photobooth_station")
+    private val templatesJsonKey = stringPreferencesKey("templates_json")
 
     val config: Flow<DeviceConfig> = context.deviceConfigDataStore.data.map { preferences ->
         DeviceConfig(
@@ -75,9 +81,19 @@ class DeviceConfigStore(private val context: Context) {
         )
     }
 
-    fun currentConfigBlocking(): DeviceConfig = runBlocking {
-        config.first()
-    }
+    val templates: Flow<List<StoredTemplate>> = context.deviceConfigDataStore.data
+        .map { preferences -> preferences[templatesJsonKey].orEmpty() }
+        .distinctUntilChanged()
+        .map { value ->
+            if (value.isBlank()) {
+                emptyList()
+            } else {
+                runCatching {
+                    json.decodeFromString(ListSerializer(StoredTemplate.serializer()), value)
+                }.getOrDefault(emptyList())
+            }
+        }
+        .flowOn(Dispatchers.Default)
 
     suspend fun save(deviceId: String, token: String) {
         context.deviceConfigDataStore.edit { preferences ->
@@ -108,4 +124,32 @@ class DeviceConfigStore(private val context: Context) {
             preferences[printUsePhotoboothStationKey] = config.printUsePhotoboothStation
         }
     }
+
+    suspend fun saveTemplates(templates: List<StoredTemplate>) {
+        context.deviceConfigDataStore.edit { preferences ->
+            preferences[templatesJsonKey] = json.encodeToString(
+                ListSerializer(StoredTemplate.serializer()),
+                templates,
+            )
+        }
+    }
 }
+
+@Serializable
+data class StoredTemplate(
+    val templateId: String,
+    val templateCode: String,
+    val templateName: String,
+    val category: String? = null,
+    val paperSize: String? = null,
+    val canvasWidth: Int = 0,
+    val canvasHeight: Int = 0,
+    val thumbnailUrl: String? = null,
+    val thumbnailLocalPath: String? = null,
+    val previewUrl: String? = null,
+    val previewLocalPath: String? = null,
+    val overlayUrl: String? = null,
+    val overlayLocalPath: String? = null,
+    val configJson: String? = null,
+    val slotsJson: String = "[]",
+)

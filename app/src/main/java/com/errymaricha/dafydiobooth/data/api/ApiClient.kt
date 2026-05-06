@@ -7,6 +7,7 @@ import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
+import java.util.concurrent.TimeUnit
 
 object ApiClient {
     private val json = Json {
@@ -19,6 +20,9 @@ object ApiClient {
         stationBaseUrlProvider: () -> String = { "" },
         tokenProvider: () -> String = { "" },
         deviceIdProvider: () -> String = { "" },
+        connectTimeoutMillis: Long = 10_000L,
+        readTimeoutMillis: Long = 10_000L,
+        writeTimeoutMillis: Long = 10_000L,
     ): PhotoboothApi {
         val logging = HttpLoggingInterceptor().apply {
             level = if (BuildConfig.DEBUG) {
@@ -28,6 +32,9 @@ object ApiClient {
             }
         }
         val client = OkHttpClient.Builder()
+            .connectTimeout(connectTimeoutMillis, TimeUnit.MILLISECONDS)
+            .readTimeout(readTimeoutMillis, TimeUnit.MILLISECONDS)
+            .writeTimeout(writeTimeoutMillis, TimeUnit.MILLISECONDS)
             .addInterceptor(
                 StationBaseUrlInterceptor(
                     stationBaseUrlProvider = stationBaseUrlProvider,

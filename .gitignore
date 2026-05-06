@@ -13,3 +13,5 @@
 .externalNativeBuild
 .cxx
 local.properties
+.env.local
+run-with-stitch.ps1

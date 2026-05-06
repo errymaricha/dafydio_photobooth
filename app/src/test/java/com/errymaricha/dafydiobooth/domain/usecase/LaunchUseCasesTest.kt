@@ -78,6 +78,7 @@ private class FakeLaunchRepository : LaunchRepository {
         return LaunchSession(
             sessionId = "session-1",
             sessionCode = "SES-001",
+            uploadUrl = "http://127.0.0.1/uploads/session-1",
             paymentStatus = "unpaid",
             paymentRequired = true,
             unlockPhoto = false,

@@ -1,5 +1,9 @@
 package com.errymaricha.dafydiobooth.ui.booth
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Arrangement
@@ -13,9 +17,13 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
@@ -32,18 +40,32 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import kotlinx.coroutines.delay
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import com.errymaricha.dafydiobooth.domain.model.LaunchSession
 import com.errymaricha.dafydiobooth.ui.launch.LaunchUiState
 import com.errymaricha.dafydiobooth.ui.launch.LaunchViewModel
-import com.errymaricha.dafydiobooth.ui.theme.DafydioBoothTheme
+import java.io.File
+import android.util.Log
+import kotlinx.coroutines.delay
 
 private enum class BoothRoute(val route: String) {
     Splash("splash"),
@@ -68,19 +90,24 @@ private fun BoothViewModel.toActions() = BoothActions(
     startNowPhoto = ::startNowPhoto,
     openCustomTemplate = ::openCustomTemplate,
     openSettings = ::openSettings,
+    disconnectStation = ::disconnectStation,
     openLaunchEvent = ::openLaunchEvent,
     openSettingEvent = ::openSettingEvent,
+    syncLaunchSession = ::syncLaunchSession,
     startLaunchEventGate = ::startLaunchEventGate,
     selectTemplate = ::selectTemplate,
     saveCustomTemplate = ::saveCustomTemplate,
     capturePhoto = ::capturePhoto,
+    capturePhotoFile = ::capturePhoto,
     retakePhoto = ::retakePhoto,
     acceptCapturePreview = ::acceptCapturePreview,
     finishSession = ::finishSession,
+    downloadResult = ::downloadResult,
     newSession = ::newSession,
     updateStationIp = ::updateStationIp,
     updateDeviceId = ::updateDeviceId,
     updateToken = ::updateToken,
+    refreshTemplates = ::refreshTemplates,
     updateVoucherCode = ::updateVoucherCode,
     updateVoucherType = ::updateVoucherType,
     updateSessionType = ::updateSessionType,
@@ -99,6 +126,7 @@ private fun BoothViewModel.toActions() = BoothActions(
     setMirrorLiveView = ::setMirrorLiveView,
     setMirrorCapture = ::setMirrorCapture,
     setImageQuality = ::setImageQuality,
+    updateDetectedCameras = ::updateDetectedCameras,
     setUseBackCamera = ::setUseBackCamera,
     setUseFrontCamera = ::setUseFrontCamera,
     setDenoisePhoto = ::setDenoisePhoto,
@@ -107,7 +135,10 @@ private fun BoothViewModel.toActions() = BoothActions(
     setShutterSound = ::setShutterSound,
     setDefaultPrinting = ::setDefaultPrinting,
     setPrintUsePhotoboothStation = ::setPrintUsePhotoboothStation,
+    triggerMockPrint = ::triggerMockPrint,
+    onStoragePermissionDenied = ::onStoragePermissionDenied,
     retry = ::retry,
+    sendHeartbeatNow = ::sendHeartbeatNow,
 )
 
 data class BoothActions(
@@ -116,19 +147,24 @@ data class BoothActions(
     val startNowPhoto: () -> Unit = {},
     val openCustomTemplate: () -> Unit = {},
     val openSettings: () -> Unit = {},
+    val disconnectStation: () -> Unit = {},
     val openLaunchEvent: () -> Unit = {},
     val openSettingEvent: () -> Unit = {},
+    val syncLaunchSession: (LaunchSession?, String, String?) -> Unit = { _, _, _ -> },
     val startLaunchEventGate: () -> Unit = {},
     val selectTemplate: (String) -> Unit = {},
     val saveCustomTemplate: (String) -> Unit = {},
     val capturePhoto: () -> Unit = {},
+    val capturePhotoFile: (String) -> Unit = {},
     val retakePhoto: () -> Unit = {},
     val acceptCapturePreview: () -> Unit = {},
     val finishSession: () -> Unit = {},
+    val downloadResult: () -> Unit = {},
     val newSession: () -> Unit = {},
     val updateStationIp: (String) -> Unit = {},
     val updateDeviceId: (String) -> Unit = {},
     val updateToken: (String) -> Unit = {},
+    val refreshTemplates: () -> Unit = {},
     val updateVoucherCode: (String) -> Unit = {},
     val updateVoucherType: (String) -> Unit = {},
     val updateSessionType: (String) -> Unit = {},
@@ -147,6 +183,7 @@ data class BoothActions(
     val setMirrorLiveView: (Boolean) -> Unit = {},
     val setMirrorCapture: (Boolean) -> Unit = {},
     val setImageQuality: (ImageQuality) -> Unit = {},
+    val updateDetectedCameras: (Boolean, Boolean) -> Unit = { _, _ -> },
     val setUseBackCamera: (Boolean) -> Unit = {},
     val setUseFrontCamera: (Boolean) -> Unit = {},
     val setDenoisePhoto: (Boolean) -> Unit = {},
@@ -155,7 +192,10 @@ data class BoothActions(
     val setShutterSound: (Boolean) -> Unit = {},
     val setDefaultPrinting: (Boolean) -> Unit = {},
     val setPrintUsePhotoboothStation: (Boolean) -> Unit = {},
+    val triggerMockPrint: () -> Unit = {},
+    val onStoragePermissionDenied: () -> Unit = {},
     val retry: () -> Unit = {},
+    val sendHeartbeatNow: (String) -> Unit = {},
 )
 
 private fun LaunchViewModel.toActions() = LaunchActions(
@@ -183,17 +223,44 @@ fun BoothApp(
     viewModel: BoothViewModel,
     launchViewModel: LaunchViewModel,
 ) {
+    val context = LocalContext.current
     val state by viewModel.state.collectAsState()
     val launchState by launchViewModel.ui.collectAsState()
     val navController = rememberNavController()
     val actions = viewModel.toActions()
     val launchActions = launchViewModel.toActions()
+    var pendingDownload by remember { mutableStateOf(false) }
+    val storagePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) {
+            actions.downloadResult()
+        } else {
+            actions.onStoragePermissionDenied()
+        }
+        pendingDownload = false
+    }
+
+    fun downloadWithStoragePermissionCheck() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q || hasLegacyStorageWritePermission(context)) {
+            actions.downloadResult()
+            return
+        }
+        pendingDownload = true
+        storagePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+    }
 
     LaunchedEffect(state.step) {
         navController.navigate(state.step.toRoute().route) {
             launchSingleTop = true
-            popUpTo(navController.graph.startDestinationId) {
-                saveState = true
+            if (state.step == BoothStep.Splash) {
+                popUpTo(navController.graph.startDestinationId) {
+                    saveState = true
+                }
+            } else {
+                popUpTo(BoothRoute.Splash.route) {
+                    inclusive = true
+                }
             }
             restoreState = true
         }
@@ -211,8 +278,17 @@ fun BoothApp(
 
     LaunchedEffect(launchState.shouldNavigateToTemplates) {
         if (launchState.shouldNavigateToTemplates) {
+            actions.syncLaunchSession(launchState.session, launchState.customerWhatsapp, launchState.token)
             actions.startNowPhoto()
             launchViewModel.consumeTemplateNavigation()
+        }
+    }
+
+    LaunchedEffect(pendingDownload) {
+        if (!pendingDownload) return@LaunchedEffect
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q || hasLegacyStorageWritePermission(context)) {
+            actions.downloadResult()
+            pendingDownload = false
         }
     }
 
@@ -234,7 +310,6 @@ fun BoothApp(
                 TemplatePickerScreen(
                     state = state,
                     launchState = launchState,
-                    templates = viewModel.defaultTemplates,
                     actions = actions,
                 )
             }
@@ -251,7 +326,10 @@ fun BoothApp(
                 TemplatePreviewScreen(state = state, actions = actions)
             }
             composable(BoothRoute.Finish.route) {
-                FinishScreen(state = state, actions = actions)
+                FinishScreen(
+                    state = state,
+                    actions = actions.copy(downloadResult = ::downloadWithStoragePermissionCheck),
+                )
             }
             composable(BoothRoute.Settings.route) {
                 SettingsScreen(state = state, actions = actions)
@@ -298,476 +376,9 @@ private fun SplashScreen(actions: BoothActions) {
     }
 }
 
-@Composable
-private fun DashboardScreen(state: BoothUiState, actions: BoothActions) {
-    ScreenFrame(title = "Dashboard", state = state, actions = actions) {
-        DashboardContent(state = state, actions = actions)
-    }
-}
 
 @Composable
-private fun DashboardContent(state: BoothUiState, actions: BoothActions) {
-    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-        val isTablet = maxWidth >= 840.dp
-        if (isTablet) {
-            Row(horizontalArrangement = Arrangement.spacedBy(20.dp), modifier = Modifier.fillMaxWidth()) {
-                DashboardActions(state = state, actions = actions, modifier = Modifier.weight(1.1f))
-                DashboardStatusPanel(state = state, modifier = Modifier.weight(0.9f))
-            }
-        } else {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.fillMaxWidth()) {
-                DashboardStatusPanel(state = state)
-                DashboardActions(state = state, actions = actions)
-            }
-        }
-    }
-}
-
-@Composable
-private fun DashboardActions(state: BoothUiState, actions: BoothActions, modifier: Modifier = Modifier) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = modifier) {
-        Button(onClick = actions.startNowPhoto, modifier = Modifier.fillMaxWidth().height(56.dp)) {
-            Text("Start Now Photo")
-        }
-        OutlinedButton(onClick = actions.openCustomTemplate, modifier = Modifier.fillMaxWidth().height(52.dp)) {
-            Text("Create Custom Template")
-        }
-        OutlinedButton(onClick = actions.startNowPhoto, modifier = Modifier.fillMaxWidth().height(52.dp)) {
-            Text("List Default Template")
-        }
-        OutlinedButton(onClick = actions.openSettings, modifier = Modifier.fillMaxWidth().height(52.dp)) {
-            Text("Settings")
-        }
-        if (state.isStationConnected) {
-            Button(onClick = actions.openLaunchEvent, modifier = Modifier.fillMaxWidth().height(56.dp)) {
-                Text("Launch Event")
-            }
-            OutlinedButton(onClick = actions.openSettingEvent, modifier = Modifier.fillMaxWidth().height(52.dp)) {
-                Text("Setting Event")
-            }
-        }
-    }
-}
-
-@Composable
-private fun DashboardStatusPanel(state: BoothUiState, modifier: Modifier = Modifier) {
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-    ) {
-        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Station", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            StatusLine(state)
-            Text(
-                text = if (state.isStationConnected) {
-                    "Data akan direkap ke Photobooth Station."
-                } else {
-                    "Mode lokal: data tidak disimpan ke database."
-                },
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Text("Next", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Text(if (state.isStationConnected) "Launch Event untuk voucher/payment." else "Settings untuk connect station.")
-        }
-    }
-}
-
-@Composable
-private fun LaunchEventScreen(
-    state: BoothUiState,
-    launchState: LaunchUiState,
-    actions: BoothActions,
-    launchActions: LaunchActions,
-) {
-    ScreenFrame(title = "Launch Event", state = state, actions = actions) {
-        Text("Station: ${state.stationIp}")
-        Text("Device: ${state.deviceId}")
-        Text("Pembayaran event connected.")
-        if (launchState.loading) {
-            CircularProgressIndicator()
-        }
-        launchState.pricing?.let { pricing ->
-            Text("Harga photobooth: ${pricing.currencyCode} ${pricing.photoboothPrice.toLong()}")
-            Text("Tambahan print: ${pricing.currencyCode} ${pricing.additionalPrintPrice.toLong()}")
-            Text("Total: ${pricing.currencyCode} ${launchState.finalAmount.toLong()}", fontWeight = FontWeight.Bold)
-        } ?: Text("Pricing belum tersinkron dari Photobooth Station.")
-        OutlinedTextField(
-            value = state.customerId,
-            onValueChange = { value ->
-                actions.updateCustomerId(value)
-                launchActions.onWhatsappChanged(value)
-            },
-            label = { Text("ID Customer / ID Pelanggan") },
-            placeholder = { Text("Nomor WA terdaftar") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Text(
-            text = "Kosongkan untuk memakai default customer dari Photobooth Station.",
-            style = MaterialTheme.typography.bodySmall,
-        )
-        OutlinedTextField(
-            value = launchState.additionalPrintCount.toString(),
-            onValueChange = { value ->
-                launchActions.onAdditionalPrintChanged(value.toIntOrNull() ?: 0)
-            },
-            label = { Text("Additional Print Count") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        OutlinedTextField(
-            value = launchState.voucherCode,
-            onValueChange = launchActions.onVoucherCodeChanged,
-            label = { Text("Kode Voucher") },
-            placeholder = { Text("Kosongkan jika tanpa voucher") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-            OutlinedButton(
-                onClick = launchActions.checkVoucherAndQuote,
-                enabled = !launchState.loading && launchState.voucherCode.isNotBlank(),
-                modifier = Modifier.weight(1f),
-            ) {
-                Text("Cek Voucher")
-            }
-            OutlinedButton(
-                onClick = launchActions.quoteQrPayment,
-                enabled = !launchState.loading,
-                modifier = Modifier.weight(1f),
-            ) {
-                Text("QR Code")
-            }
-        }
-        launchState.quote?.let { quote ->
-            Text("Subtotal: ${quote.currency} ${quote.subtotalAmount ?: launchState.finalAmount.toLong()}")
-            Text("Diskon: ${quote.currency} ${quote.discountAmount ?: 0}")
-            Text("Total bayar: ${quote.currency} ${quote.amount}", fontWeight = FontWeight.Bold)
-            Text("Payment URL: ${quote.paymentUrl ?: "-"}")
-        }
-        launchState.message?.let { message ->
-            Text(message, color = MaterialTheme.colorScheme.primary)
-        }
-        Text(
-            text = "Kode Session: ${launchState.session?.sessionCode ?: "-"}",
-            fontWeight = FontWeight.Bold,
-        )
-        Text("Approval: ${launchState.approvalStatus ?: launchState.session?.paymentStatus ?: "-"}")
-        launchState.error?.let { error ->
-            Text(error, color = MaterialTheme.colorScheme.error)
-        }
-        OutlinedButton(
-            onClick = launchActions.submitManualPaymentRequest,
-            enabled = launchState.canSubmitManualPayment,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(if (launchState.isManualPaymentWaiting) "Menunggu Approval Station" else "Pembayaran Manual")
-        }
-        OutlinedButton(
-            onClick = launchActions.checkManualPaymentApproval,
-            enabled = !launchState.loading && launchState.session != null,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("Check Approval")
-        }
-    }
-}
-
-@Composable
-private fun SettingEventScreen(state: BoothUiState, actions: BoothActions) {
-    ScreenFrame(title = "Setting Event", state = state, actions = actions) {
-        Text("Event setting tersambung ke Photobooth Station.")
-        Text("Konfigurasi event backend akan ditambahkan setelah contract event tersedia.")
-        OutlinedButton(onClick = actions.openDashboard, modifier = Modifier.fillMaxWidth()) {
-            Text("Back to Dashboard")
-        }
-    }
-}
-
-@Composable
-private fun VoucherCheckScreen(state: BoothUiState, actions: BoothActions) {
-    ScreenFrame(title = "Voucher Check", state = state, actions = actions) {
-        EventStatus(state)
-        OutlinedTextField(
-            value = state.voucherCode,
-            onValueChange = actions.updateVoucherCode,
-            label = { Text("Voucher Code") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        OutlinedTextField(
-            value = state.voucherType,
-            onValueChange = actions.updateVoucherType,
-            label = { Text("Voucher Type") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        OutlinedTextField(
-            value = state.sessionType,
-            onValueChange = actions.updateSessionType,
-            label = { Text("Session Type") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-            OutlinedButton(onClick = actions.continueWithoutVoucher, modifier = Modifier.weight(1f)) {
-                Text("No Voucher")
-            }
-            Button(onClick = actions.verifyVoucher, enabled = !state.isLoading, modifier = Modifier.weight(1f)) {
-                Text("Verify")
-            }
-        }
-    }
-}
-
-@Composable
-private fun PaymentGateScreen(state: BoothUiState, actions: BoothActions) {
-    ScreenFrame(title = "Payment Gate", state = state, actions = actions) {
-        EventStatus(state)
-        Text("Voucher: ${state.voucher?.code ?: state.voucherCode.ifBlank { "-" }}")
-        Text("Type: ${state.voucher?.type ?: state.voucherType}")
-        Text("Amount: ${state.quote?.currency ?: "IDR"} ${state.quote?.amount ?: 0}")
-        Text("Payment required: ${state.quote?.paymentRequired ?: true}")
-        Text("Unlock photo: ${state.quote?.unlockPhoto ?: false}")
-        OutlinedTextField(
-            value = state.paymentMethod,
-            onValueChange = actions.updatePaymentMethod,
-            label = { Text("Payment Method") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-            OutlinedButton(onClick = actions.requestQuote, enabled = !state.isLoading, modifier = Modifier.weight(1f)) {
-                Text("Quote")
-            }
-            Button(
-                onClick = actions.createManualPaymentSession,
-                enabled = !state.isLoading,
-                modifier = Modifier.weight(1f),
-            ) {
-                Text("Manual Payment")
-            }
-        }
-        OutlinedButton(
-            onClick = actions.continueAfterFreeQuote,
-            enabled = state.quote?.paymentRequired == false && !state.isLoading,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("Continue Without Payment")
-        }
-    }
-}
-
-@Composable
-private fun WaitingApprovalScreen(state: BoothUiState, actions: BoothActions) {
-    ScreenFrame(title = "Waiting Approval", state = state, actions = actions) {
-        EventStatus(state)
-        Text("Kode Session: ${state.session?.sessionCode ?: "-"}", fontWeight = FontWeight.Bold)
-        Text("Session ID: ${state.session?.sessionId ?: "-"}")
-        Text("Payment: ${state.paymentStatus?.paymentStatus ?: state.session?.paymentStatus ?: "pending"}")
-        Text("Approval dilakukan dari Photobooth Station.")
-        Button(onClick = actions.checkPayment, enabled = !state.isLoading, modifier = Modifier.fillMaxWidth()) {
-            Text("Check Approval")
-        }
-    }
-}
-
-@Composable
-private fun TemplatePickerScreen(
-    state: BoothUiState,
-    launchState: LaunchUiState,
-    templates: List<String>,
-    actions: BoothActions,
-) {
-    ScreenFrame(title = "Pilih Template", state = state, actions = actions) {
-        Text(
-            text = "Kode Session: ${launchState.session?.sessionCode ?: state.session?.sessionCode ?: "-"}",
-            fontWeight = FontWeight.Bold,
-        )
-        templates.forEach { template ->
-            OutlinedButton(
-                onClick = { actions.selectTemplate(template) },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(template)
-            }
-        }
-    }
-}
-
-@Composable
-private fun CustomTemplateScreen(state: BoothUiState, actions: BoothActions) {
-    ScreenFrame(title = "Create Custom Template", state = state, actions = actions) {
-        Text("Template custom sementara dibuat lokal. Editor detail akan dihubungkan ke Photobooth Station.")
-        Button(onClick = { actions.saveCustomTemplate("Custom Template") }, modifier = Modifier.fillMaxWidth()) {
-            Text("Use Custom Template")
-        }
-    }
-}
-
-@Composable
-private fun CameraScreen(
-    state: BoothUiState,
-    launchState: LaunchUiState,
-    actions: BoothActions,
-) {
-    ScreenFrame(title = "Camera", state = state, actions = actions) {
-        CameraSurface(state)
-        Text(
-            text = "Kode Session: ${launchState.session?.sessionCode ?: state.session?.sessionCode ?: "-"}",
-            fontWeight = FontWeight.Bold,
-        )
-        Text("ID Pelanggan / No WA: ${launchState.customerWhatsapp.ifBlank { state.customerId.ifBlank { "-" } }}")
-        Text("Template: ${state.selectedTemplate ?: "-"}")
-        Text("Camera: ${if (state.cameraSource == CameraSource.AndroidDefault) "Android default" else "External Canon"}")
-        Text("Timer: ${state.countdownSeconds}s")
-        Button(onClick = actions.capturePhoto, modifier = Modifier.fillMaxWidth()) {
-            Text("Capture")
-        }
-    }
-}
-
-@Composable
-private fun CapturePreviewScreen(state: BoothUiState, actions: BoothActions) {
-    ScreenFrame(title = "Preview Capture", state = state, actions = actions) {
-        CameraSurface(state)
-        Text("Photo: ${state.capturedPhotoName ?: "-"}")
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-            OutlinedButton(onClick = actions.retakePhoto, modifier = Modifier.weight(1f)) {
-                Text("Retake")
-            }
-            Button(onClick = actions.acceptCapturePreview, modifier = Modifier.weight(1f)) {
-                Text("Done")
-            }
-        }
-    }
-}
-
-@Composable
-private fun TemplatePreviewScreen(state: BoothUiState, actions: BoothActions) {
-    ScreenFrame(title = "Preview Template", state = state, actions = actions) {
-        TemplateSurface(state)
-        Text("Template: ${state.selectedTemplate ?: "-"}")
-        Text("Photo: ${state.capturedPhotoName ?: "-"}")
-        Button(onClick = actions.finishSession, modifier = Modifier.fillMaxWidth()) {
-            Text("Finish")
-        }
-    }
-}
-
-@Composable
-private fun FinishScreen(state: BoothUiState, actions: BoothActions) {
-    ScreenFrame(title = "Finish", state = state, actions = actions) {
-        TemplateSurface(state)
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-            OutlinedButton(onClick = {}, modifier = Modifier.weight(1f)) {
-                Text("Download")
-            }
-            OutlinedButton(onClick = {}, modifier = Modifier.weight(1f)) {
-                Text("Print")
-            }
-            OutlinedButton(onClick = {}, modifier = Modifier.weight(1f)) {
-                Text("Share")
-            }
-        }
-        Text(
-            text = if (state.printUsePhotoboothStation && state.isStationConnected) {
-                "Print akan dikirim ke Photobooth Station."
-            } else {
-                "Print memakai default printing device."
-            },
-        )
-        Button(onClick = actions.newSession, modifier = Modifier.fillMaxWidth()) {
-            Text("Back to Dashboard")
-        }
-    }
-}
-
-@Composable
-private fun SettingsScreen(state: BoothUiState, actions: BoothActions) {
-    ScreenFrame(title = "Settings", state = state, actions = actions) {
-        SectionTitle("Photobooth Station")
-        OutlinedTextField(
-            value = state.stationIp,
-            onValueChange = actions.updateStationIp,
-            label = { Text("Station URL / IP") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Text("Device fisik: 10.10.116.4:8000. Emulator: 10.0.2.2:8000.")
-        OutlinedTextField(
-            value = state.deviceId,
-            onValueChange = actions.updateDeviceId,
-            label = { Text("Device ID") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        OutlinedTextField(
-            value = state.token,
-            onValueChange = actions.updateToken,
-            label = { Text("API Key / Token") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Button(onClick = actions.retry, enabled = !state.isLoading, modifier = Modifier.fillMaxWidth()) {
-            Text("Connect Photobooth Station")
-        }
-
-        SectionTitle("External Camera")
-        ChipRow {
-            FilterChip(
-                selected = state.cameraSource == CameraSource.AndroidDefault,
-                onClick = { actions.setCameraSource(CameraSource.AndroidDefault) },
-                label = { Text("Android") },
-            )
-            FilterChip(
-                selected = state.cameraSource == CameraSource.ExternalCanon,
-                onClick = { actions.setCameraSource(CameraSource.ExternalCanon) },
-                label = { Text("External Canon") },
-            )
-        }
-        Text("Status: ${state.externalCameraStatus.name}")
-        ChipRow {
-            OutlinedButton(onClick = actions.scanExternalCamera) { Text("Scan") }
-            OutlinedButton(onClick = actions.pairExternalCamera) { Text("Pairing") }
-            OutlinedButton(onClick = actions.markExternalCameraConnected) { Text("Connected") }
-        }
-        SwitchRow("Mirror live view", state.mirrorLiveView, actions.setMirrorLiveView)
-        SwitchRow("Mirror capture", state.mirrorCapture, actions.setMirrorCapture)
-
-        SectionTitle("Camera Settings")
-        ChipRow {
-            ImageQuality.entries.forEach { quality ->
-                FilterChip(
-                    selected = state.imageQuality == quality,
-                    onClick = { actions.setImageQuality(quality) },
-                    label = { Text(quality.name) },
-                )
-            }
-        }
-        SwitchRow("Back Camera", state.useBackCamera, actions.setUseBackCamera)
-        SwitchRow("Front Camera", state.useFrontCamera, actions.setUseFrontCamera)
-        SwitchRow("Denoise Foto", state.denoisePhoto, actions.setDenoisePhoto)
-        ChipRow {
-            listOf(0, 3, 5, 10).forEach { seconds ->
-                FilterChip(
-                    selected = state.countdownSeconds == seconds,
-                    onClick = { actions.setCountdownSeconds(seconds) },
-                    label = { Text("${seconds}s") },
-                )
-            }
-        }
-        SwitchRow("Countdown Audio", state.countdownAudio, actions.setCountdownAudio)
-        SwitchRow("Shutter Sound", state.shutterSound, actions.setShutterSound)
-
-        SectionTitle("Printer")
-        SwitchRow("Default printing", state.defaultPrinting, actions.setDefaultPrinting)
-        SwitchRow("Print use Photobooth Station", state.printUsePhotoboothStation, actions.setPrintUsePhotoboothStation)
-    }
-}
-
-@Composable
-private fun ScreenFrame(
+fun ScreenFrame(
     title: String,
     state: BoothUiState,
     actions: BoothActions,
@@ -802,79 +413,137 @@ private fun ScreenFrame(
 }
 
 @Composable
-private fun EventStatus(state: BoothUiState) {
-    state.eventStatusMessage?.let { message ->
-        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-            Text(text = message, modifier = Modifier.padding(14.dp))
-        }
+fun CapturedPhotoSurface(state: BoothUiState) {
+    val path = state.capturedPhotoPath
+    if (path != null) {
+        AsyncImage(
+            model = File(path),
+            contentDescription = "Captured photo",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(320.dp),
+        )
+    } else {
+        CameraSurface(state)
     }
 }
 
-@Composable
-private fun StatusLine(state: BoothUiState) {
-    Text("Station: ${if (state.isStationConnected) "Connected" else "Not connected"}")
-    Text("Station IP: ${state.stationIp.ifBlank { "-" }}")
-    Text("Device: ${state.deviceId.ifBlank { "-" }}")
+fun hasLegacyStorageWritePermission(context: Context): Boolean {
+    if (Build.VERSION.SDK_INT > Build.VERSION_CODES.P) return true
+    return ContextCompat.checkSelfPermission(
+        context,
+        Manifest.permission.WRITE_EXTERNAL_STORAGE,
+    ) == PackageManager.PERMISSION_GRANTED
 }
 
 @Composable
-private fun SectionTitle(text: String) {
-    Spacer(Modifier.height(8.dp))
-    Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-}
+fun TemplateSurface(state: BoothUiState) {
+    val context = LocalContext.current
+    val localPreview = state.selectedTemplatePreviewLocalPath
+        ?.takeIf { it.isNotBlank() }
+        ?.let { File(it) }
+        ?.takeIf { it.exists() && it.length() > 0L }
+    val previewModel: Any? = localPreview
+    val localOverlay = state.selectedTemplateOverlayLocalPath
+        ?.takeIf { it.isNotBlank() }
+        ?.let { File(it) }
+        ?.takeIf { it.exists() && it.length() > 0L }
+    val overlayModel: Any? = localOverlay
+    val hasOverlay = overlayModel != null
+    val canvasWidth = state.selectedTemplateCanvasWidth.takeIf { it > 0 } ?: 1
+    val canvasHeight = state.selectedTemplateCanvasHeight.takeIf { it > 0 } ?: 1
+    val aspect = canvasWidth.toFloat() / canvasHeight.toFloat()
 
-@Composable
-@OptIn(ExperimentalLayoutApi::class)
-private fun ChipRow(content: @Composable () -> Unit) {
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-        content()
-    }
-}
-
-@Composable
-private fun SwitchRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(label)
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
-    }
-}
-
-@Composable
-private fun CameraSurface(state: BoothUiState) {
-    Surface(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
-            .height(280.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant,
-    ) {
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-            Text(
-                text = if (state.cameraSource == CameraSource.AndroidDefault) {
-                    "Android Camera Preview"
-                } else {
-                    "External Canon Live View: ${state.externalCameraStatus.name}"
-                },
-            )
-        }
-    }
-}
-
-@Composable
-private fun TemplateSurface(state: BoothUiState) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(320.dp)
+            .heightIn(min = 320.dp, max = 460.dp)
             .background(MaterialTheme.colorScheme.surfaceVariant),
-        contentAlignment = Alignment.Center,
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(state.selectedTemplate ?: "Template")
-            Text(state.capturedPhotoName ?: "Photo")
+        val containerWidth = maxWidth
+        val containerHeight = maxHeight
+        val containerAspect = containerWidth.value / containerHeight.value
+        val frameWidth = if (containerAspect > aspect) containerHeight * aspect else containerWidth
+        val frameHeight = if (containerAspect > aspect) containerHeight else containerWidth / aspect
+        val offsetX = (containerWidth - frameWidth) / 2f
+        val offsetY = (containerHeight - frameHeight) / 2f
+
+        Box(
+            modifier = Modifier
+                .offset(x = offsetX, y = offsetY)
+                .size(frameWidth, frameHeight)
+                .clip(RoundedCornerShape(6.dp))
+                .background(Color.Black.copy(alpha = 0.05f)),
+        ) {
+            // Prioritas preview canvas: capture + overlay.
+            // Preview bitmap dipakai hanya kalau overlay belum ada.
+            if (!hasOverlay && previewModel != null) {
+                AsyncImage(
+                    model = previewModel,
+                    contentDescription = "Template preview",
+                    contentScale = ContentScale.FillBounds,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+
+            state.selectedTemplateSlots.forEach { slot ->
+                val x = frameWidth * (slot.x.toFloat() / canvasWidth.toFloat())
+                val y = frameHeight * (slot.y.toFloat() / canvasHeight.toFloat())
+                val w = frameWidth * (slot.width.toFloat() / canvasWidth.toFloat())
+                val h = frameHeight * (slot.height.toFloat() / canvasHeight.toFloat())
+                val r = frameWidth * (slot.borderRadius.toFloat() / canvasWidth.toFloat())
+                val photoPath = state.capturedPhotosBySlot[slot.slotIndex]
+                if (photoPath != null) {
+                    AsyncImage(
+                        model = File(photoPath),
+                        contentDescription = "Slot ${slot.slotIndex}",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .offset(x = x, y = y)
+                            .size(w, h)
+                            .graphicsLayer { rotationZ = slot.rotation.toFloat() }
+                            .clip(RoundedCornerShape(r)),
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .offset(x = x, y = y)
+                            .size(w, h)
+                            .graphicsLayer { rotationZ = slot.rotation.toFloat() }
+                            .clip(RoundedCornerShape(r))
+                            .background(Color.White.copy(alpha = 0.95f)),
+                    )
+                }
+                Surface(
+                    modifier = Modifier.offset(x = x + 6.dp, y = y + 6.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f),
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Text(
+                        text = slot.slotIndex.toString(),
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+            }
+
+            if (overlayModel != null) {
+                AsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(overlayModel)
+                        .listener(
+                            onError = { _, result ->
+                                Log.e("TemplateOverlay", "Overlay load gagal: ${result.throwable.message}; url=$overlayModel")
+                            },
+                        )
+                        .build(),
+                    contentDescription = "Template overlay",
+                    contentScale = ContentScale.FillBounds,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
         }
     }
 }
@@ -894,77 +563,4 @@ private fun BoothStep.toRoute(): BoothRoute = when (this) {
     BoothStep.VoucherCheck -> BoothRoute.VoucherCheck
     BoothStep.PaymentGate -> BoothRoute.PaymentGate
     BoothStep.WaitingApproval -> BoothRoute.WaitingApproval
-}
-
-private val PreviewLocalState = BoothUiState(
-    step = BoothStep.Dashboard,
-    stationIp = "http://10.10.116.4:8000/",
-    deviceId = "PB-DEVICE-01",
-    isStationConnected = false,
-)
-
-private val PreviewConnectedState = PreviewLocalState.copy(
-    isStationConnected = true,
-    selectedTemplate = "Classic 2 Slot",
-    capturedPhotoName = "capture-preview.jpg",
-    printUsePhotoboothStation = true,
-)
-
-@Preview(name = "Dashboard Mobile", widthDp = 390, heightDp = 844, showBackground = true)
-@Composable
-private fun DashboardMobilePreview() {
-    DafydioBoothTheme {
-        DashboardScreen(state = PreviewLocalState, actions = BoothActions())
-    }
-}
-
-@Preview(name = "Dashboard Tablet", widthDp = 1280, heightDp = 800, showBackground = true)
-@Composable
-private fun DashboardTabletPreview() {
-    DafydioBoothTheme {
-        DashboardScreen(state = PreviewConnectedState, actions = BoothActions())
-    }
-}
-
-@Preview(name = "Settings Tablet", widthDp = 1280, heightDp = 800, showBackground = true)
-@Composable
-private fun SettingsTabletPreview() {
-    DafydioBoothTheme {
-        SettingsScreen(
-            state = PreviewConnectedState.copy(
-                step = BoothStep.Settings,
-                cameraSource = CameraSource.ExternalCanon,
-                externalCameraStatus = ExternalCameraStatus.Connected,
-                mirrorLiveView = true,
-                countdownSeconds = 5,
-            ),
-            actions = BoothActions(),
-        )
-    }
-}
-
-@Preview(name = "Finish Tablet", widthDp = 1280, heightDp = 800, showBackground = true)
-@Composable
-private fun FinishTabletPreview() {
-    DafydioBoothTheme {
-        FinishScreen(
-            state = PreviewConnectedState.copy(step = BoothStep.Finish),
-            actions = BoothActions(),
-        )
-    }
-}
-
-@Preview(name = "Payment Gate Tablet", widthDp = 1280, heightDp = 800, showBackground = true)
-@Composable
-private fun PaymentGateTabletPreview() {
-    DafydioBoothTheme {
-        PaymentGateScreen(
-            state = PreviewConnectedState.copy(
-                step = BoothStep.PaymentGate,
-                voucherCode = "PROMO-EVENT",
-                eventStatusMessage = "Payment dibutuhkan. Pilih manual payment untuk menunggu approval station.",
-            ),
-            actions = BoothActions(),
-        )
-    }
 }

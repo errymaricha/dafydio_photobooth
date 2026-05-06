@@ -28,7 +28,7 @@ android {
             dimension = "environment"
             applicationIdSuffix = ".dev"
             versionNameSuffix = "-dev"
-            buildConfigField("String", "BASE_URL", "\"https://dev-api.dafydio.local/\"")
+            buildConfigField("String", "BASE_URL", "\"http://10.10.116.4:8000/\"")
             manifestPlaceholders["usesCleartextTraffic"] = "true"
         }
         create("staging") {
@@ -40,7 +40,7 @@ android {
         }
         create("prod") {
             dimension = "environment"
-            buildConfigField("String", "BASE_URL", "\"https://api.dafydio.local/\"")
+            buildConfigField("String", "BASE_URL", "\"http://10.10.116.4:8000/\"")
             manifestPlaceholders["usesCleartextTraffic"] = "false"
         }
     }
@@ -77,6 +77,16 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.coil.compose)
+    implementation(libs.coil.network.okhttp)
+    implementation(libs.androidx.camera.core)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.view)
+    implementation(libs.androidx.exifinterface)
+    implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    implementation(libs.androidx.security.crypto)
     implementation(libs.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.retrofit.core)
