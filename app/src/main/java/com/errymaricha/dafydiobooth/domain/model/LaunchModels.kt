@@ -14,6 +14,7 @@ data class LaunchContext(
 data class LaunchSession(
     val sessionId: String,
     val sessionCode: String?,
+    val uploadUrl: String?,
     val paymentStatus: String,
     val paymentRequired: Boolean,
     val unlockPhoto: Boolean,

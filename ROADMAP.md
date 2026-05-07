@@ -158,6 +158,8 @@ Testable output:
 
 ### Phase 5: Real Camera Capture
 
+Status: implemented with CameraX preview, permission handling, countdown, back/front camera selection, local capture files, and retake.
+
 Build:
 
 - CameraX preview.

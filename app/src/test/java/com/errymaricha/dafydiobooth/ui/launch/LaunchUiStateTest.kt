@@ -53,6 +53,7 @@ class LaunchUiStateTest {
     private fun pendingSession() = LaunchSession(
         sessionId = "session-1",
         sessionCode = "SES-001",
+        uploadUrl = "http://127.0.0.1/uploads/session-1",
         paymentStatus = "pending",
         paymentRequired = true,
         unlockPhoto = false,

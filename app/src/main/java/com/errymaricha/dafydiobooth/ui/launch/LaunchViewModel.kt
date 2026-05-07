@@ -2,6 +2,7 @@ package com.errymaricha.dafydiobooth.ui.launch
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.errymaricha.dafydiobooth.data.session.SessionStateManager
 import com.errymaricha.dafydiobooth.domain.usecase.CalculateFinalAmountUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.CheckLaunchPaymentUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.OpenManualSessionUseCase
@@ -23,6 +24,7 @@ class LaunchViewModel(
     private val requestLaunchPaymentQuote: RequestLaunchPaymentQuoteUseCase,
     private val checkLaunchPayment: CheckLaunchPaymentUseCase,
     private val calculateFinalAmount: CalculateFinalAmountUseCase,
+    private val sessionStateManager: SessionStateManager,
 ) : ViewModel() {
     private val _ui = MutableStateFlow(LaunchUiState())
     val ui: StateFlow<LaunchUiState> = _ui.asStateFlow()
@@ -78,6 +80,13 @@ class LaunchViewModel(
             runCatching {
                 _ui.update { it.copy(loading = true, error = null, message = null) }
                 val (token, pricing) = prepareLaunch(deviceCode, apiKey)
+                val snapshot = sessionStateManager.snapshot()
+                sessionStateManager.updateConnection(
+                    stationIp = snapshot.stationIp,
+                    deviceId = deviceCode.trim(),
+                    apiKey = apiKey.trim(),
+                    authToken = token,
+                )
                 val total = calculateFinalAmount(
                     pricing.photoboothPrice,
                     pricing.additionalPrintPrice,
@@ -110,14 +119,19 @@ class LaunchViewModel(
     fun submitManualPaymentRequest() {
         viewModelScope.launch {
             val current = _ui.value
-            val token = current.token
+            val token = sessionStateManager.snapshot().authToken.ifBlank { current.token.orEmpty() }
+            val waValidation = validateCustomerWa(current.customerWhatsapp)
+            if (waValidation != null) {
+                _ui.update { it.copy(error = null, message = waValidation) }
+                return@launch
+            }
             if (!current.canSubmitManualPayment) {
                 _ui.update {
                     it.copy(error = "Request manual payment masih menunggu tanggapan Photobooth Station")
                 }
                 return@launch
             }
-            if (token.isNullOrBlank()) {
+            if (token.isBlank()) {
                 _ui.update { it.copy(error = "Token station belum tersedia") }
                 return@launch
             }
@@ -139,6 +153,7 @@ class LaunchViewModel(
                     additionalPrintCount = current.additionalPrintCount,
                 )
             }.onSuccess { session ->
+                sessionStateManager.updateFromLaunchSession(session, current.customerWhatsapp, token)
                 _ui.update {
                     it.copy(
                         loading = false,
@@ -151,10 +166,12 @@ class LaunchViewModel(
                 }
                 startApprovalPolling(token, session.sessionId)
             }.onFailure { error ->
+                val friendlyWaMessage = toInvalidWaMessage(error.message)
                 _ui.update {
                     it.copy(
                         loading = false,
-                        error = error.message ?: "Gagal kirim request manual",
+                        error = if (friendlyWaMessage != null) null else (error.message ?: "Gagal kirim request manual"),
+                        message = friendlyWaMessage ?: it.message,
                     )
                 }
             }
@@ -164,8 +181,13 @@ class LaunchViewModel(
     fun checkVoucherAndQuote() {
         viewModelScope.launch {
             val current = _ui.value
-            val token = current.token
-            if (token.isNullOrBlank()) {
+            val token = sessionStateManager.snapshot().authToken.ifBlank { current.token.orEmpty() }
+            val waValidation = validateCustomerWa(current.customerWhatsapp)
+            if (waValidation != null) {
+                _ui.update { it.copy(error = null, message = waValidation) }
+                return@launch
+            }
+            if (token.isBlank()) {
                 _ui.update { it.copy(error = "Token station belum tersedia") }
                 return@launch
             }
@@ -202,10 +224,12 @@ class LaunchViewModel(
                     )
                 }
             }.onFailure { error ->
+                val friendlyWaMessage = toInvalidWaMessage(error.message)
                 _ui.update {
                     it.copy(
                         loading = false,
-                        error = error.message ?: "Gagal cek voucher",
+                        error = if (friendlyWaMessage != null) null else (error.message ?: "Gagal cek voucher"),
+                        message = friendlyWaMessage ?: it.message,
                     )
                 }
             }
@@ -215,8 +239,13 @@ class LaunchViewModel(
     fun quoteQrPayment() {
         viewModelScope.launch {
             val current = _ui.value
-            val token = current.token
-            if (token.isNullOrBlank()) {
+            val token = sessionStateManager.snapshot().authToken.ifBlank { current.token.orEmpty() }
+            val waValidation = validateCustomerWa(current.customerWhatsapp)
+            if (waValidation != null) {
+                _ui.update { it.copy(error = null, message = waValidation) }
+                return@launch
+            }
+            if (token.isBlank()) {
                 _ui.update { it.copy(error = "Token station belum tersedia") }
                 return@launch
             }
@@ -241,10 +270,12 @@ class LaunchViewModel(
                     )
                 }
             }.onFailure { error ->
+                val friendlyWaMessage = toInvalidWaMessage(error.message)
                 _ui.update {
                     it.copy(
                         loading = false,
-                        error = error.message ?: "Gagal menyiapkan QR Code",
+                        error = if (friendlyWaMessage != null) null else (error.message ?: "Gagal menyiapkan QR Code"),
+                        message = friendlyWaMessage ?: it.message,
                     )
                 }
             }
@@ -253,9 +284,9 @@ class LaunchViewModel(
 
     fun checkManualPaymentApproval() {
         val current = _ui.value
-        val token = current.token
+        val token = sessionStateManager.snapshot().authToken.ifBlank { current.token.orEmpty() }
         val sessionId = current.session?.sessionId
-        if (token.isNullOrBlank() || sessionId.isNullOrBlank()) {
+        if (token.isBlank() || sessionId.isNullOrBlank()) {
             _ui.update { it.copy(error = "Session manual belum tersedia") }
             return
         }
@@ -292,6 +323,9 @@ class LaunchViewModel(
                 val approved = status.isApproved
                 val rejected = status.isRejected
                 val rejectedMessage = buildRejectedMessage(status.rejectionReason, status.reviewer, status.reviewedAt)
+                if (approved) {
+                    sessionStateManager.updateFromLaunchSession(_ui.value.session, _ui.value.customerWhatsapp, token)
+                }
                 _ui.update {
                     it.copy(
                         approvalStatus = status.displayStatus,
@@ -325,6 +359,29 @@ class LaunchViewModel(
     private companion object {
         const val APPROVAL_POLL_INTERVAL_MS = 2_000L
         const val APPROVAL_POLL_LIMIT = 150
+    }
+
+    private fun toInvalidWaMessage(raw: String?): String? {
+        val message = raw?.trim().orEmpty()
+        if (message.isBlank()) return null
+        val lower = message.lowercase()
+        val hasTargetField = lower.contains("customer") || lower.contains("whatsapp") || lower.contains("wa")
+        val hasInvalidHint = lower.contains("invalid")
+            || lower.contains("tidak valid")
+            || lower.contains("not valid")
+            || lower.contains("not found")
+            || lower.contains("tidak ditemukan")
+            || lower.contains("unregistered")
+            || lower.contains("tidak terdaftar")
+        return if (hasTargetField && hasInvalidHint) "No WA tidak valid" else null
+    }
+
+    private fun validateCustomerWa(raw: String): String? {
+        val digits = raw.filter { it.isDigit() }
+        if (digits.isNotEmpty() && digits.length < 10) {
+            return "No WA tidak valid (minimal 10 digit)"
+        }
+        return null
     }
 }
 

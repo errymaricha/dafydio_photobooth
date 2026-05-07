@@ -9,3 +9,6 @@ val Coral80 = Color(0xFFFFB4A8)
 val Ink40 = Color(0xFF315B7D)
 val Steel40 = Color(0xFF2F6F63)
 val Coral40 = Color(0xFF9D3F32)
+
+val DashboardStatusCardLight = Color(0xFFE8EFF5)
+val DashboardStatusCardDark = Color(0xFF1E2A36)

@@ -112,6 +112,7 @@ Checklist ini mengikuti fase coding Android agar setiap penambahan fitur bisa la
 
 ## Phase 5: Real Camera Capture
 
+- [ ] Status implementation: CameraX real capture tersedia untuk Android default camera.
 - [ ] Permission camera diminta saat diperlukan.
 - [ ] Permission denied ditangani tanpa crash.
 - [ ] Android default camera menampilkan preview.

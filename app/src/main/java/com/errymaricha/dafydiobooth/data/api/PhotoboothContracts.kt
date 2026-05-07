@@ -58,8 +58,20 @@ data class TemplateDto(
     @SerialName("paper_size") val paperSize: String? = null,
     @SerialName("canvas_width") val canvasWidth: Int,
     @SerialName("canvas_height") val canvasHeight: Int,
+    @SerialName("thumbnail_url") val thumbnailUrl: String? = null,
+    @SerialName("thumbnail_signed_url") val thumbnailSignedUrl: String? = null,
+    @SerialName("signed_thumbnail_url") val signedThumbnailUrl: String? = null,
+    @SerialName("thumbnail_url_signed") val thumbnailUrlSigned: String? = null,
     @SerialName("preview_url") val previewUrl: String? = null,
+    @SerialName("preview_signed_url") val previewSignedUrl: String? = null,
+    @SerialName("signed_preview_url") val signedPreviewUrl: String? = null,
+    @SerialName("preview_url_signed") val previewUrlSigned: String? = null,
     @SerialName("overlay_url") val overlayUrl: String? = null,
+    @SerialName("overlay_signed_url") val overlaySignedUrl: String? = null,
+    @SerialName("signed_overlay_url") val signedOverlayUrl: String? = null,
+    @SerialName("overlay_url_signed") val overlayUrlSigned: String? = null,
+    @SerialName("asset_urls_expires_at") val assetUrlsExpiresAt: String? = null,
+    @SerialName("updated_at") val updatedAt: String? = null,
     @SerialName("config") val config: JsonObject? = null,
     @SerialName("slots") val slots: List<TemplateSlotDto>,
 )
@@ -235,7 +247,25 @@ data class ConfirmPaymentResponse(
 )
 
 @Serializable
+data class CreateEditJobRequest(
+    @SerialName("template_id") val templateId: String,
+    @SerialName("items") val items: List<EditJobItemRequest>,
+)
+
+@Serializable
+data class EditJobItemRequest(
+    @SerialName("session_photo_id") val sessionPhotoId: String,
+    @SerialName("slot_index") val slotIndex: Int,
+)
+
+@Serializable
+data class RenderEditJobRequest(
+    @SerialName("force") val force: Boolean? = null,
+)
+
+@Serializable
 data class ApiErrorBody(
     @SerialName("code") val code: String? = null,
     @SerialName("message") val message: String? = null,
+    @SerialName("errors") val errors: Map<String, List<String>>? = null,
 )

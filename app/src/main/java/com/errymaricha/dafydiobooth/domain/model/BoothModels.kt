@@ -34,6 +34,30 @@ data class BoothSession(
     val unlockPhoto: Boolean,
 )
 
+data class BoothTemplate(
+    val templateId: String,
+    val templateCode: String,
+    val templateName: String,
+    val category: String?,
+    val paperSize: String?,
+    val canvasWidth: Int,
+    val canvasHeight: Int,
+    val thumbnailUrl: String?,
+    val previewUrl: String?,
+    val overlayUrl: String?,
+    val configJson: String?,
+    val slotsJson: String,
+)
+
+data class RenderItem(
+    val sessionPhotoId: String,
+    val slotIndex: Int,
+)
+
+data class UploadCaptureResult(
+    val sessionPhotoId: String?,
+)
+
 data class PaymentStatus(
     val sessionId: String,
     val sessionCode: String?,
@@ -44,8 +68,8 @@ data class PaymentStatus(
 )
 
 sealed interface BoothError {
-    data object Unauthorized : BoothError
-    data object Forbidden : BoothError
+    data class Unauthorized(val message: String = "Device tidak terotorisasi. Login ulang.") : BoothError
+    data class Forbidden(val message: String = "Device tidak punya akses.") : BoothError
     data class Validation(val message: String) : BoothError
     data class Network(val message: String) : BoothError
     data class Unknown(val message: String) : BoothError

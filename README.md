@@ -172,7 +172,7 @@ Current phase status:
 - Phase 2: Settings Persistence. Implemented.
 - Phase 3: Station Connection And Connected Dashboard. Implemented.
 - Phase 4: Connected Event Gate. Implemented, including optional customer ID payload.
-- Phase 5: Real Camera Capture.
+- Phase 5: Real Camera Capture. Implemented with CameraX preview, camera permission handling, countdown, back/front camera selection, local capture files, and retake.
 - Phase 6: External Canon Camera Interface.
 - Phase 7: Template Render And Finish Actions.
 - Phase 8: Station Sync Queue.
@@ -184,6 +184,9 @@ Project docs:
 - `AI_AGENT_GUIDE.md`: panduan kerja AI agent dan aturan arsitektur.
 - `ROADMAP.md`: roadmap produk dan breakdown fase implementasi.
 - `docs/UAT_DEVICE_CHECKLIST.md`: checklist UAT per fase.
+- `docs/INTERNAL_RELEASE_CHECKLIST.md`: checklist release internal (build, heartbeat, local-only flow, 16KB).
+- `docs/STATION_LAYER_ARCHITECTURE.md`: ringkasan arsitektur station layer + worker + offline queue.
+- `docs/DEPENDENCY_FREEZE.md`: baseline versi dependency yang dibekukan untuk stabilitas release.
 
 ## Important Rules
 

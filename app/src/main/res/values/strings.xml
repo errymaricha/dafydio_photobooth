@@ -1,3 +1,23 @@
 <resources>
     <string name="app_name">DafydioBooth</string>
+    <string name="dashboard_action_start_now_photo">Start Now Photo</string>
+    <string name="dashboard_action_create_custom_template">Create Custom Template</string>
+    <string name="dashboard_action_list_default_template">List Default Template</string>
+    <string name="dashboard_action_settings">Settings</string>
+    <string name="dashboard_action_launch_event">Launch Event</string>
+    <string name="dashboard_action_setting_event">Setting Event</string>
+
+    <string name="dashboard_station_title">Station</string>
+    <string name="dashboard_next_title">Next</string>
+    <string name="dashboard_station_connected">Connected</string>
+    <string name="dashboard_station_not_connected">Not connected</string>
+    <string name="dashboard_station_status">Station: %1$s</string>
+    <string name="dashboard_station_ip">Station IP: %1$s</string>
+    <string name="dashboard_device_id">Device: %1$s</string>
+    <string name="dashboard_empty_placeholder">-</string>
+
+    <string name="dashboard_connected_description">Data akan direkap ke Photobooth Station.</string>
+    <string name="dashboard_disconnected_description">Mode lokal: data tidak disimpan ke database.</string>
+    <string name="dashboard_connected_next">Launch Event untuk voucher/payment.</string>
+    <string name="dashboard_disconnected_next">Settings untuk connect station.</string>
 </resources>

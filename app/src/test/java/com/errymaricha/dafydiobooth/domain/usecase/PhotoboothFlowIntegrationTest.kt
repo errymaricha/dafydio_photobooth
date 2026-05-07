@@ -2,9 +2,13 @@ package com.errymaricha.dafydiobooth.domain.usecase
 
 import com.errymaricha.dafydiobooth.domain.model.BoothResult
 import com.errymaricha.dafydiobooth.domain.model.BoothSession
+import com.errymaricha.dafydiobooth.domain.model.BoothTemplate
 import com.errymaricha.dafydiobooth.domain.model.PaymentQuote
 import com.errymaricha.dafydiobooth.domain.model.PaymentStatus
+import com.errymaricha.dafydiobooth.domain.model.RenderItem
+import com.errymaricha.dafydiobooth.domain.model.UploadCaptureResult
 import com.errymaricha.dafydiobooth.domain.model.VoucherVerification
+import java.io.File
 import com.errymaricha.dafydiobooth.domain.repository.PhotoboothRepository
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -21,6 +25,12 @@ class PhotoboothFlowIntegrationTest {
             createSession = CreateSessionUseCase(repository),
             checkPayment = CheckPaymentUseCase(repository),
             confirmPayment = ConfirmPaymentUseCase(repository),
+            uploadCapture = UploadCaptureUseCase(repository),
+            refreshTemplates = RefreshTemplatesUseCase(repository),
+            completeSession = CompleteSessionUseCase(repository),
+            renderSession = RenderSessionUseCase(repository),
+            createEditJob = CreateEditJobUseCase(repository),
+            uploadRenderedOutput = UploadRenderedOutputUseCase(repository),
         )
 
         val voucher = useCases.verifyVoucher("device-1", "VCH-001", "regular")
@@ -151,5 +161,85 @@ private class FakePhotoboothRepository : PhotoboothRepository {
                 unlockPhoto = true,
             ),
         )
+    }
+
+    override suspend fun uploadCapture(
+        authToken: String,
+        deviceId: String,
+        sessionId: String,
+        captureIndex: Int,
+        slotIndex: Int?,
+        photoFile: File,
+    ): BoothResult<UploadCaptureResult> {
+        calls += "uploadCapture"
+        return BoothResult.Success(UploadCaptureResult(sessionPhotoId = "sp-$slotIndex"))
+    }
+
+    override suspend fun fetchTemplates(authToken: String): BoothResult<List<BoothTemplate>> {
+        calls += "fetchTemplates"
+        return BoothResult.Success(
+            listOf(
+                BoothTemplate(
+                    templateId = "template-1",
+                    templateCode = "CLASSIC-2",
+                    templateName = "Classic 2 Slot",
+                    category = "classic",
+                    paperSize = "4R",
+                    canvasWidth = 1200,
+                    canvasHeight = 1800,
+                    thumbnailUrl = null,
+                    previewUrl = null,
+                    overlayUrl = null,
+                    configJson = null,
+                    slotsJson = "[]",
+                ),
+            ),
+        )
+    }
+
+    override suspend fun completeSession(
+        authToken: String,
+        deviceId: String,
+        sessionId: String,
+    ): BoothResult<Unit> {
+        calls += "completeSession"
+        return BoothResult.Success(Unit)
+    }
+
+    override suspend fun renderSession(
+        authToken: String,
+        deviceId: String,
+        sessionId: String,
+        templateId: String,
+        items: List<RenderItem>,
+    ): BoothResult<Unit> {
+        calls += "renderSession"
+        return BoothResult.Success(Unit)
+    }
+
+    override suspend fun uploadRenderedOutput(
+        authToken: String,
+        deviceId: String,
+        sessionId: String,
+        editJobId: String,
+        photoFile: File,
+        width: Int?,
+        height: Int?,
+        dpi: Int?,
+        force: Boolean,
+    ): BoothResult<Unit> {
+        calls += "uploadRenderedOutput"
+        return BoothResult.Success(Unit)
+    }
+
+    override suspend fun createEditJob(
+        authToken: String,
+        deviceId: String,
+        sessionId: String,
+        templateId: String,
+        items: List<RenderItem>,
+    ): BoothResult<String> {
+        calls += "createEditJob"
+        return BoothResult.Success("edit-job-1")
     }
 }
