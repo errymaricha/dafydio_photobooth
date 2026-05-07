@@ -14,6 +14,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.errymaricha.dafydiobooth.BuildConfig
+import com.errymaricha.dafydiobooth.DafydioApplication
 import com.errymaricha.dafydiobooth.station.model.HeartbeatCapabilities
 import com.errymaricha.dafydiobooth.station.model.HeartbeatRequest
 import com.errymaricha.dafydiobooth.station.local.HeartbeatStatus
@@ -31,6 +32,15 @@ class HeartbeatWorker(
     private val deviceRepository: DeviceRepository,
     private val statusStore: HeartbeatStatusStore,
 ) : CoroutineWorker(appContext, params) {
+    constructor(
+        appContext: Context,
+        params: WorkerParameters,
+    ) : this(
+        appContext = appContext,
+        params = params,
+        deviceRepository = (appContext.applicationContext as DafydioApplication).stationBootstrap.deviceRepository,
+        statusStore = (appContext.applicationContext as DafydioApplication).stationBootstrap.heartbeatStatusStore,
+    )
 
     override suspend fun doWork(): Result {
         val localIp = resolveLocalIp()

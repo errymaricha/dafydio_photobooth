@@ -6,6 +6,7 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import com.errymaricha.dafydiobooth.DafydioApplication
 import com.errymaricha.dafydiobooth.station.network.AppResult
 import com.errymaricha.dafydiobooth.station.repository.DeviceRepository
 import java.util.concurrent.TimeUnit
@@ -15,6 +16,15 @@ class OfflineQueueWorker(
     params: WorkerParameters,
     private val deviceRepository: DeviceRepository,
 ) : CoroutineWorker(appContext, params) {
+    constructor(
+        appContext: Context,
+        params: WorkerParameters,
+    ) : this(
+        appContext = appContext,
+        params = params,
+        deviceRepository = (appContext.applicationContext as DafydioApplication).stationBootstrap.deviceRepository,
+    )
+
     override suspend fun doWork(): Result {
         return when (deviceRepository.flushOfflineQueue()) {
             is AppResult.Success -> Result.success()

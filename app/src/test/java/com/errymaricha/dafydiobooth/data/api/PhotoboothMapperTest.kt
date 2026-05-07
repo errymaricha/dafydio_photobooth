@@ -9,6 +9,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PhotoboothMapperTest {
+    private val json = Json { explicitNulls = false }
+
     @Test
     fun `voucher response maps exact backend fields to domain`() {
         val response = VerifyVoucherResponse(
@@ -90,12 +92,11 @@ class PhotoboothMapperTest {
             additionalPrintCount = 0,
         )
 
-        val body = Json { explicitNulls = false }
-            .encodeToString(OpenManualSessionRequest.serializer(), request)
-        val json = Json.parseToJsonElement(body).jsonObject
+        val body = json.encodeToString(OpenManualSessionRequest.serializer(), request)
+        val parsed = Json.parseToJsonElement(body).jsonObject
 
-        assertEquals("manual", json.getValue("payment_method").jsonPrimitive.content)
-        assertEquals("6282118401998", json.getValue("customer_whatsapp").jsonPrimitive.content)
+        assertEquals("manual", parsed.getValue("payment_method").jsonPrimitive.content)
+        assertEquals("6282118401998", parsed.getValue("customer_whatsapp").jsonPrimitive.content)
     }
 
     @Test
