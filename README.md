@@ -38,7 +38,7 @@ Layar Launch Event sudah bind ke paket launch untuk menampilkan pricing, final a
 
 ## Android - Station - Cloud Flow
 
-![Android Station Cloud Flow](docs/images/android-station-cloud-flow.jpg)
+![Android Station Cloud Flow](docs/images/android-station-cloud-flow.png)
 
 Event dibuat dari Android, tetapi source of truth tetap di Station DB.
 Cloud tidak membuat event pada flow ini; cloud hanya menerima block `event` saat session di-sync dari station.
@@ -108,7 +108,7 @@ Expected:
 
 ## Setup Awal Penggunaan
 
-![Setup Awal Android Booth](docs/images/setup-awal-android-booth.jpg)
+![Setup Awal Android Booth](docs/images/setup-awal-android-booth.png)
 
 ## Tech Stack
 
