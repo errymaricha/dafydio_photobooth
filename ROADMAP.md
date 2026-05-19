@@ -36,6 +36,51 @@ Parked sementara:
 
 - Scramble/OpenAPI docs lanjutan.
 
+## Product Ideas Backlog
+
+### Cinematic Photostrip
+
+Status: idea backlog (belum dijadwalkan implementasi).
+
+Konsep:
+
+- Output utama tetap photostrip/foto.
+- Saat countdown dan proses capture, app juga merekam motion clip pendek per slot.
+- Rekaman di-crop sesuai area slot frame (bukan full frame) supaya ukuran file tetap ringan.
+- Setelah sesi selesai, sistem merender story vertikal `9:16` yang menggabungkan:
+  - momen bergerak saat countdown/capture, dan
+  - hasil frame/foto final.
+
+Tujuan:
+
+- Membuat hasil booth lebih unik untuk social sharing tanpa menghilangkan identitas photostrip.
+
+### Instant Branded Story Pack
+
+Status: idea backlog (belum dijadwalkan implementasi).
+
+Konsep:
+
+- Setelah sesi selesai, sistem otomatis membuat paket output siap share:
+  - `Story 9:16` (1080x1920),
+  - `Post 1:1` (1080x1080),
+  - `Print Strip` (sesuai template booth).
+- Setiap output membawa branding event yang konsisten:
+  - event name,
+  - tanggal/waktu,
+  - logo/sponsor,
+  - optional hashtag/call-to-action.
+- Semua output ditampilkan dalam satu layar `Share Pack` untuk aksi cepat:
+  - kirim WA,
+  - scan QR download,
+  - share lokal,
+  - print ulang.
+
+Tujuan:
+
+- Mengurangi friksi editing manual setelah sesi.
+- Meningkatkan nilai shareability dan eksposur brand event.
+
 ## Current Status Summary
 
 Android foundation:

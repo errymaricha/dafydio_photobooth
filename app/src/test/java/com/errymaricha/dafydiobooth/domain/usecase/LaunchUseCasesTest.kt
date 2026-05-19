@@ -1,6 +1,7 @@
 package com.errymaricha.dafydiobooth.domain.usecase
 
 import com.errymaricha.dafydiobooth.domain.model.LaunchPricing
+import com.errymaricha.dafydiobooth.domain.model.LaunchEvent
 import com.errymaricha.dafydiobooth.domain.model.LaunchPaymentStatus
 import com.errymaricha.dafydiobooth.domain.model.LaunchSession
 import com.errymaricha.dafydiobooth.domain.model.PaymentQuote
@@ -28,7 +29,7 @@ class LaunchUseCasesTest {
         val repository = FakeLaunchRepository()
         val useCase = OpenManualSessionUseCase(repository)
 
-        val session = useCase("station-token", "628123456789", "DISC10", -2)
+        val session = useCase("station-token", "event-1", "628123456789", "DISC10", -2)
 
         assertEquals("session-1", session.sessionId)
         assertEquals(0, repository.lastAdditionalPrintCount)
@@ -69,6 +70,7 @@ private class FakeLaunchRepository : LaunchRepository {
 
     override suspend fun openSessionManual(
         token: String,
+        eventId: String,
         customerWhatsapp: String,
         voucherCode: String,
         additionalPrintCount: Int,
@@ -84,6 +86,45 @@ private class FakeLaunchRepository : LaunchRepository {
             unlockPhoto = false,
         )
     }
+
+    override suspend fun listEvents(token: String): List<LaunchEvent> = emptyList()
+
+    override suspend fun createEvent(
+        token: String,
+        eventCode: String,
+        eventName: String,
+        cloudEnabled: Boolean,
+        cloudUploadMode: String,
+        cloudSyncTiming: String,
+        cloudTemplateMarketplaceEnabled: Boolean,
+    ): LaunchEvent = LaunchEvent(
+        eventId = "event-1",
+        eventCode = eventCode,
+        eventName = eventName,
+        cloudEnabled = cloudEnabled,
+        cloudUploadMode = cloudUploadMode,
+        cloudSyncTiming = cloudSyncTiming,
+        cloudTemplateMarketplaceEnabled = cloudTemplateMarketplaceEnabled,
+    )
+
+    override suspend fun updateEvent(
+        token: String,
+        eventId: String,
+        eventCode: String,
+        eventName: String,
+        cloudEnabled: Boolean,
+        cloudUploadMode: String,
+        cloudSyncTiming: String,
+        cloudTemplateMarketplaceEnabled: Boolean,
+    ): LaunchEvent = LaunchEvent(
+        eventId = eventId,
+        eventCode = eventCode,
+        eventName = eventName,
+        cloudEnabled = cloudEnabled,
+        cloudUploadMode = cloudUploadMode,
+        cloudSyncTiming = cloudSyncTiming,
+        cloudTemplateMarketplaceEnabled = cloudTemplateMarketplaceEnabled,
+    )
 
     override suspend fun verifyVoucher(
         token: String,

@@ -14,6 +14,8 @@ data class SessionState(
     val authToken: String = "",
     val isStationConnected: Boolean = false,
     val customerId: String = "",
+    val customerWhatsapp: String = "",
+    val selectedEventId: String = "",
     val sessionId: String? = null,
     val sessionCode: String? = null,
     val uploadUrl: String? = null,
@@ -47,8 +49,11 @@ class SessionStateManager {
 
     fun updateFromBoothSession(session: BoothSession?, customerId: String) {
         _state.update {
+            val resolvedCustomerId = session?.customerId?.takeIf { it.isNotBlank() }
+                ?: customerId.takeIf { it.isNotBlank() }
+                ?: it.customerId.ifBlank { buildFallbackCustomerId() }
             it.copy(
-                customerId = customerId,
+                customerId = resolvedCustomerId,
                 sessionId = session?.sessionId,
                 sessionCode = session?.sessionCode,
                 uploadUrl = session?.uploadUrl,
@@ -59,13 +64,22 @@ class SessionStateManager {
         }
     }
 
-    fun updateFromLaunchSession(session: LaunchSession?, customerId: String, authToken: String?) {
+    fun updateFromLaunchSession(
+        session: LaunchSession?,
+        customerWhatsapp: String,
+        authToken: String?,
+        selectedEventId: String = "",
+    ) {
         _state.update {
             val resolvedToken = authToken?.ifBlank { it.authToken } ?: it.authToken
+            val resolvedCustomerId = session?.customerId?.takeIf { it.isNotBlank() }
+                ?: it.customerId.ifBlank { buildFallbackCustomerId(customerWhatsapp) }
             it.copy(
                 authToken = resolvedToken,
                 isStationConnected = resolvedToken.isNotBlank(),
-                customerId = customerId,
+                customerId = resolvedCustomerId,
+                customerWhatsapp = customerWhatsapp,
+                selectedEventId = selectedEventId.ifBlank { it.selectedEventId },
                 sessionId = session?.sessionId,
                 sessionCode = session?.sessionCode,
                 uploadUrl = session?.uploadUrl,
@@ -80,6 +94,7 @@ class SessionStateManager {
         _state.update {
             it.copy(
                 customerId = "",
+                customerWhatsapp = "",
                 sessionId = null,
                 sessionCode = null,
                 uploadUrl = null,
@@ -87,6 +102,14 @@ class SessionStateManager {
                 paymentRequired = null,
                 unlockPhoto = null,
             )
+        }
+    }
+
+    private fun buildFallbackCustomerId(customerWhatsapp: String = ""): String {
+        val digits = customerWhatsapp.filter(Char::isDigit)
+        return when {
+            digits.isNotBlank() -> "CUST-$digits"
+            else -> "CUST-DEFAULT"
         }
     }
 }

@@ -21,8 +21,10 @@ import com.errymaricha.dafydiobooth.domain.usecase.CheckLaunchPaymentUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.CheckPaymentUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.CompleteSessionUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.ConfirmPaymentUseCase
+import com.errymaricha.dafydiobooth.domain.usecase.CreateLaunchEventUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.CreateEditJobUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.CreateSessionUseCase
+import com.errymaricha.dafydiobooth.domain.usecase.ListLaunchEventsUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.OpenManualSessionUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.PhotoboothUseCases
 import com.errymaricha.dafydiobooth.domain.usecase.PrepareLaunchUseCase
@@ -32,6 +34,7 @@ import com.errymaricha.dafydiobooth.domain.usecase.RefreshTemplatesUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.RenderSessionUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.UploadRenderedOutputUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.UploadCaptureUseCase
+import com.errymaricha.dafydiobooth.domain.usecase.UpdateLaunchEventUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.VerifyLaunchVoucherUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.VerifyVoucherUseCase
 import com.errymaricha.dafydiobooth.ui.booth.BoothApp
@@ -86,6 +89,7 @@ class MainActivity : ComponentActivity() {
             uploadRenderedOutput = UploadRenderedOutputUseCase(repository),
         )
         val factory = BoothViewModelFactory(
+            appContext = applicationContext,
             useCases = useCases,
             configStore = configStore,
             templateSqliteStore = templateSqliteStore,
@@ -99,6 +103,9 @@ class MainActivity : ComponentActivity() {
         )
         val launchFactory = LaunchViewModelFactory(
             prepareLaunch = PrepareLaunchUseCase(launchRepository),
+            listLaunchEvents = ListLaunchEventsUseCase(launchRepository),
+            createLaunchEvent = CreateLaunchEventUseCase(launchRepository),
+            updateLaunchEvent = UpdateLaunchEventUseCase(launchRepository),
             openManualSession = OpenManualSessionUseCase(launchRepository),
             verifyLaunchVoucher = VerifyLaunchVoucherUseCase(launchRepository),
             requestLaunchPaymentQuote = RequestLaunchPaymentQuoteUseCase(launchRepository),

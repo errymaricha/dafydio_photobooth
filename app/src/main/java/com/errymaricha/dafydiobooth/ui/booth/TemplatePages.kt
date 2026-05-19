@@ -36,14 +36,26 @@ fun TemplatePickerScreen(
     actions: BoothActions,
 ) {
     ScreenFrame(title = "Pilih Template", state = state, actions = actions) {
+        if (state.launchEventName.isNotBlank()) {
+            Text("Event: ${state.launchEventName}", fontWeight = FontWeight.Bold)
+        }
         Text(
             text = "Kode Session: ${launchState.session?.sessionCode ?: state.session?.sessionCode ?: "-"}",
             fontWeight = FontWeight.Bold,
         )
-        if (state.availableTemplateItems.isEmpty()) {
-            Text("Belum ada template lokal. Buka Settings lalu update template dari Photobooth Station.")
+        val filteredTemplateItems = if (!state.localOnlySession && state.launchAllowedTemplateIds.isNotEmpty()) {
+            state.availableTemplateItems.filter { state.launchAllowedTemplateIds.contains(it.templateId) }
         } else {
-            state.availableTemplateItems.forEach { template ->
+            state.availableTemplateItems
+        }
+        if (filteredTemplateItems.isEmpty()) {
+            if (state.availableTemplateItems.isEmpty()) {
+                Text("Belum ada template lokal. Buka Settings lalu update template dari Photobooth Station.")
+            } else {
+                Text("Tidak ada template yang diizinkan untuk event ini. Atur di Setting Event.")
+            }
+        } else {
+            filteredTemplateItems.forEach { template ->
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),

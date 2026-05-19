@@ -5,13 +5,19 @@ import androidx.lifecycle.ViewModelProvider
 import com.errymaricha.dafydiobooth.data.session.SessionStateManager
 import com.errymaricha.dafydiobooth.domain.usecase.CalculateFinalAmountUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.CheckLaunchPaymentUseCase
+import com.errymaricha.dafydiobooth.domain.usecase.CreateLaunchEventUseCase
+import com.errymaricha.dafydiobooth.domain.usecase.ListLaunchEventsUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.OpenManualSessionUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.PrepareLaunchUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.RequestLaunchPaymentQuoteUseCase
+import com.errymaricha.dafydiobooth.domain.usecase.UpdateLaunchEventUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.VerifyLaunchVoucherUseCase
 
 class LaunchViewModelFactory(
     private val prepareLaunch: PrepareLaunchUseCase,
+    private val listLaunchEvents: ListLaunchEventsUseCase,
+    private val createLaunchEvent: CreateLaunchEventUseCase,
+    private val updateLaunchEvent: UpdateLaunchEventUseCase,
     private val openManualSession: OpenManualSessionUseCase,
     private val verifyLaunchVoucher: VerifyLaunchVoucherUseCase,
     private val requestLaunchPaymentQuote: RequestLaunchPaymentQuoteUseCase,
@@ -24,6 +30,9 @@ class LaunchViewModelFactory(
         if (modelClass.isAssignableFrom(LaunchViewModel::class.java)) {
             return LaunchViewModel(
                 prepareLaunch = prepareLaunch,
+                listLaunchEvents = listLaunchEvents,
+                createLaunchEvent = createLaunchEvent,
+                updateLaunchEvent = updateLaunchEvent,
                 openManualSession = openManualSession,
                 verifyLaunchVoucher = verifyLaunchVoucher,
                 requestLaunchPaymentQuote = requestLaunchPaymentQuote,

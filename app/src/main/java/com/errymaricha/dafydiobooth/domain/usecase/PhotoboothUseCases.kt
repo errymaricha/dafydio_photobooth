@@ -40,14 +40,16 @@ class RequestPaymentQuoteUseCase(private val repository: PhotoboothRepository) {
 class CreateSessionUseCase(private val repository: PhotoboothRepository) {
     suspend operator fun invoke(
         deviceId: String,
+        eventId: String,
         voucherCode: String,
         voucherType: String,
         quoteId: String,
         sessionType: String,
         customerId: String? = null,
     ): BoothResult<BoothSession> {
+        if (eventId.isBlank()) return BoothResult.Failure(BoothError.Validation("Event belum dipilih"))
         if (quoteId.isBlank()) return BoothResult.Failure(BoothError.Validation("Quote belum tersedia"))
-        return repository.createSession(deviceId, voucherCode, voucherType, quoteId, sessionType, customerId)
+        return repository.createSession(deviceId, eventId, voucherCode, voucherType, quoteId, sessionType, customerId)
     }
 }
 

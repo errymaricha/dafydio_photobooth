@@ -36,6 +36,80 @@ Field `ID Customer / ID Pelanggan` di Launch Event memakai nomor WA yang sudah t
 Paket launch sudah tersedia untuk login device, sync pricing dari master-data, hitung final amount, dan open manual session dengan `customer_whatsapp`, `payment_method=manual`, serta `additional_print_count`.
 Layar Launch Event sudah bind ke paket launch untuk menampilkan pricing, final amount, additional print, dan request manual payment.
 
+## Android - Station - Cloud Flow
+
+![Android Station Cloud Flow](docs/images/android-station-cloud-flow.jpg)
+
+Event dibuat dari Android, tetapi source of truth tetap di Station DB.
+Cloud tidak membuat event pada flow ini; cloud hanya menerima block `event` saat session di-sync dari station.
+
+Contoh payload create event dari Android ke station:
+
+```json
+{
+  "event_code": "HBD-DAFIDIO-001",
+  "event_name": "Ulang Tahun Dafydio ke 1",
+  "cloud_enabled": true,
+  "cloud_upload_mode": "originals_and_framed",
+  "cloud_sync_timing": "after_render",
+  "cloud_template_marketplace_enabled": true
+}
+```
+
+Contoh payload create session dari Android ke station:
+
+```json
+{
+  "event_id": "uuid-event",
+  "customer_whatsapp": "6281234567890",
+  "payment_method": "manual"
+}
+```
+
+Contoh block event yang diteruskan station ke cloud saat sync session:
+
+```json
+{
+  "event": {
+    "event_code": "`HBD-DAFIDIO-001`",
+    "event_name": "Ulang Tahun Dafydio ke 1"
+  }
+}
+```
+
+## Final Contract: Duplicate Slot Mapping
+
+Kontrak final Android dan Station untuk slot duplikat:
+
+- `slot_index`: visual layer template, wajib unik per template.
+- `source_slot_index`: slot capture asli, boleh berulang.
+- Android capture/upload berdasarkan unique `source_slot_index` saja.
+- Android `create edit job` kirim item per source slot unik saja.
+- Station melakukan mapping visual slot duplikat saat render.
+
+Contoh slot:
+
+```json
+[
+  { "slot_index": 1, "source_slot_index": 1 },
+  { "slot_index": 2, "source_slot_index": 1 },
+  { "slot_index": 3, "source_slot_index": 3 }
+]
+```
+
+Expected:
+
+- Android capture: `1` dan `3` saja.
+- Android create edit job items: `1` dan `3` saja.
+- Station render:
+  - visual slot `1` pakai foto source `1`
+  - visual slot `2` pakai foto source `1`
+  - visual slot `3` pakai foto source `3`
+
+## Setup Awal Penggunaan
+
+![Setup Awal Android Booth](docs/images/setup-awal-android-booth.jpg)
+
 ## Tech Stack
 
 - Kotlin

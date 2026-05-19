@@ -5,9 +5,12 @@ import androidx.lifecycle.viewModelScope
 import com.errymaricha.dafydiobooth.data.session.SessionStateManager
 import com.errymaricha.dafydiobooth.domain.usecase.CalculateFinalAmountUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.CheckLaunchPaymentUseCase
+import com.errymaricha.dafydiobooth.domain.usecase.CreateLaunchEventUseCase
+import com.errymaricha.dafydiobooth.domain.usecase.ListLaunchEventsUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.OpenManualSessionUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.PrepareLaunchUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.RequestLaunchPaymentQuoteUseCase
+import com.errymaricha.dafydiobooth.domain.usecase.UpdateLaunchEventUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.VerifyLaunchVoucherUseCase
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -19,6 +22,9 @@ import kotlinx.coroutines.launch
 
 class LaunchViewModel(
     private val prepareLaunch: PrepareLaunchUseCase,
+    private val listLaunchEvents: ListLaunchEventsUseCase,
+    private val createLaunchEvent: CreateLaunchEventUseCase,
+    private val updateLaunchEvent: UpdateLaunchEventUseCase,
     private val openManualSession: OpenManualSessionUseCase,
     private val verifyLaunchVoucher: VerifyLaunchVoucherUseCase,
     private val requestLaunchPaymentQuote: RequestLaunchPaymentQuoteUseCase,
@@ -33,7 +39,7 @@ class LaunchViewModel(
     fun onWhatsappChanged(value: String) {
         _ui.update {
             it.copy(
-                customerWhatsapp = value.filter { char -> char.isDigit() || char == '+' },
+                customerWhatsapp = value.filter(Char::isDigit),
                 error = null,
             )
         }
@@ -74,6 +80,64 @@ class LaunchViewModel(
         }
     }
 
+    fun onEventCodeChanged(value: String) {
+        _ui.update { it.copy(eventCodeInput = value.trim().uppercase(), error = null) }
+    }
+
+    fun onEventNameChanged(value: String) {
+        _ui.update { it.copy(eventNameInput = value, error = null) }
+    }
+
+    fun onSelectEvent(eventId: String) {
+        val selected = _ui.value.events.firstOrNull { it.eventId == eventId }
+        _ui.update {
+            it.copy(
+                selectedEventId = eventId,
+                eventCodeInput = selected?.eventCode ?: it.eventCodeInput,
+                eventNameInput = selected?.eventName ?: it.eventNameInput,
+                error = null,
+            )
+        }
+    }
+
+    fun refreshEvents() {
+        viewModelScope.launch {
+            val current = _ui.value
+            val token = sessionStateManager.snapshot().authToken.ifBlank { current.token.orEmpty() }
+            if (token.isBlank()) {
+                _ui.update { it.copy(error = "Token station belum tersedia") }
+                return@launch
+            }
+
+            runCatching {
+                _ui.update { it.copy(loading = true, error = null, message = null) }
+                listLaunchEvents(token).sortedBy { it.eventName.lowercase() }
+            }.onSuccess { events ->
+                val selectedEventId = current.selectedEventId.takeIf { selected ->
+                    selected.isNotBlank() && events.any { it.eventId == selected }
+                } ?: events.firstOrNull()?.eventId.orEmpty()
+                val selectedEvent = events.firstOrNull { it.eventId == selectedEventId }
+                _ui.update {
+                    it.copy(
+                        loading = false,
+                        events = events,
+                        selectedEventId = selectedEventId,
+                        eventCodeInput = selectedEvent?.eventCode ?: it.eventCodeInput,
+                        eventNameInput = selectedEvent?.eventName ?: it.eventNameInput,
+                        message = if (events.isEmpty()) "Belum ada event di station." else "Daftar event berhasil disinkronkan.",
+                    )
+                }
+            }.onFailure { error ->
+                _ui.update {
+                    it.copy(
+                        loading = false,
+                        error = error.message ?: "Gagal mengambil daftar event",
+                    )
+                }
+            }
+        }
+    }
+
     fun init(deviceCode: String, apiKey: String) {
         approvalPollingJob?.cancel()
         viewModelScope.launch {
@@ -92,6 +156,11 @@ class LaunchViewModel(
                     pricing.additionalPrintPrice,
                     _ui.value.additionalPrintCount,
                 )
+                val events = runCatching { listLaunchEvents(token) }.getOrDefault(emptyList())
+                val selectedEventId = _ui.value.selectedEventId.takeIf { selected ->
+                    selected.isNotBlank() && events.any { it.eventId == selected }
+                } ?: events.firstOrNull()?.eventId.orEmpty()
+                val selectedEvent = events.firstOrNull { it.eventId == selectedEventId }
                 _ui.update {
                     it.copy(
                         loading = false,
@@ -103,6 +172,10 @@ class LaunchViewModel(
                         finalAmount = total,
                         approvalStatus = null,
                         shouldNavigateToTemplates = false,
+                        events = events,
+                        selectedEventId = selectedEventId,
+                        eventCodeInput = selectedEvent?.eventCode ?: it.eventCodeInput,
+                        eventNameInput = selectedEvent?.eventName ?: it.eventNameInput,
                     )
                 }
             }.onFailure { error ->
@@ -116,62 +189,52 @@ class LaunchViewModel(
         }
     }
 
-    fun submitManualPaymentRequest() {
+    fun createOrUpdateEvent() {
         viewModelScope.launch {
             val current = _ui.value
             val token = sessionStateManager.snapshot().authToken.ifBlank { current.token.orEmpty() }
-            val waValidation = validateCustomerWa(current.customerWhatsapp)
-            if (waValidation != null) {
-                _ui.update { it.copy(error = null, message = waValidation) }
-                return@launch
-            }
-            if (!current.canSubmitManualPayment) {
-                _ui.update {
-                    it.copy(error = "Request manual payment masih menunggu tanggapan Photobooth Station")
-                }
-                return@launch
-            }
             if (token.isBlank()) {
                 _ui.update { it.copy(error = "Token station belum tersedia") }
                 return@launch
             }
 
             runCatching {
-                _ui.update {
-                    it.copy(
-                        loading = true,
-                        session = null,
-                        approvalStatus = null,
-                        error = null,
-                        message = null,
+                _ui.update { it.copy(loading = true, error = null, message = null) }
+                if (current.selectedEventId.isBlank()) {
+                    createLaunchEvent(
+                        token = token,
+                        eventCode = current.eventCodeInput,
+                        eventName = current.eventNameInput,
+                    )
+                } else {
+                    updateLaunchEvent(
+                        token = token,
+                        eventId = current.selectedEventId,
+                        eventCode = current.eventCodeInput,
+                        eventName = current.eventNameInput,
                     )
                 }
-                openManualSession(
-                    token = token,
-                    customerWhatsapp = current.customerWhatsapp,
-                    voucherCode = current.voucherCode,
-                    additionalPrintCount = current.additionalPrintCount,
-                )
-            }.onSuccess { session ->
-                sessionStateManager.updateFromLaunchSession(session, current.customerWhatsapp, token)
+            }.onSuccess { saved ->
+                val nextEvents = _ui.value.events
+                    .filterNot { it.eventId == saved.eventId }
+                    .plus(saved)
+                    .sortedBy { it.eventName.lowercase() }
                 _ui.update {
                     it.copy(
                         loading = false,
-                        session = session,
-                        approvalStatus = session.paymentStatus,
-                        message = "Open session terkirim (${session.sessionCode}). Menunggu approve station.",
+                        events = nextEvents,
+                        selectedEventId = saved.eventId,
+                        eventCodeInput = saved.eventCode,
+                        eventNameInput = saved.eventName,
+                        message = "Event ${saved.eventCode} tersimpan.",
                         error = null,
-                        shouldNavigateToTemplates = false,
                     )
                 }
-                startApprovalPolling(token, session.sessionId)
             }.onFailure { error ->
-                val friendlyWaMessage = toInvalidWaMessage(error.message)
                 _ui.update {
                     it.copy(
                         loading = false,
-                        error = if (friendlyWaMessage != null) null else (error.message ?: "Gagal kirim request manual"),
-                        message = friendlyWaMessage ?: it.message,
+                        error = error.message ?: "Gagal simpan event",
                     )
                 }
             }
@@ -224,10 +287,13 @@ class LaunchViewModel(
                     )
                 }
             }.onFailure { error ->
-                val friendlyWaMessage = toInvalidWaMessage(error.message)
+                val friendlyWaMessage = toInvalidWaMessage(error.message) ?: toInvalidVoucherMessage(error.message)
                 _ui.update {
                     it.copy(
                         loading = false,
+                        voucherCode = if (friendlyWaMessage == "Kode voucher tidak valid") "" else it.voucherCode,
+                        voucher = if (friendlyWaMessage == "Kode voucher tidak valid") null else it.voucher,
+                        quote = if (friendlyWaMessage == "Kode voucher tidak valid") null else it.quote,
                         error = if (friendlyWaMessage != null) null else (error.message ?: "Gagal cek voucher"),
                         message = friendlyWaMessage ?: it.message,
                     )
@@ -270,11 +336,83 @@ class LaunchViewModel(
                     )
                 }
             }.onFailure { error ->
-                val friendlyWaMessage = toInvalidWaMessage(error.message)
+                val friendlyWaMessage = toInvalidWaMessage(error.message) ?: toInvalidVoucherMessage(error.message)
                 _ui.update {
                     it.copy(
                         loading = false,
                         error = if (friendlyWaMessage != null) null else (error.message ?: "Gagal menyiapkan QR Code"),
+                        message = friendlyWaMessage ?: it.message,
+                    )
+                }
+            }
+        }
+    }
+
+    fun submitManualPaymentRequest() {
+        viewModelScope.launch {
+            val current = _ui.value
+            val token = sessionStateManager.snapshot().authToken.ifBlank { current.token.orEmpty() }
+            val waValidation = validateCustomerWa(current.customerWhatsapp)
+            if (waValidation != null) {
+                _ui.update { it.copy(error = null, message = waValidation) }
+                return@launch
+            }
+            if (current.selectedEventId.isBlank()) {
+                _ui.update { it.copy(error = "Pilih event dulu sebelum request manual payment") }
+                return@launch
+            }
+            if (!current.canSubmitManualPayment) {
+                _ui.update {
+                    it.copy(error = "Request manual payment masih menunggu tanggapan Photobooth Station")
+                }
+                return@launch
+            }
+            if (token.isBlank()) {
+                _ui.update { it.copy(error = "Token station belum tersedia") }
+                return@launch
+            }
+
+            runCatching {
+                _ui.update {
+                    it.copy(
+                        loading = true,
+                        session = null,
+                        approvalStatus = null,
+                        error = null,
+                        message = null,
+                    )
+                }
+                openManualSession(
+                    token = token,
+                    eventId = current.selectedEventId,
+                    customerWhatsapp = current.customerWhatsapp,
+                    voucherCode = current.voucherCode,
+                    additionalPrintCount = current.additionalPrintCount,
+                )
+            }.onSuccess { session ->
+                sessionStateManager.updateFromLaunchSession(
+                    session = session,
+                    customerWhatsapp = current.customerWhatsapp,
+                    authToken = token,
+                    selectedEventId = current.selectedEventId,
+                )
+                _ui.update {
+                    it.copy(
+                        loading = false,
+                        session = session,
+                        approvalStatus = session.paymentStatus,
+                        message = "Session ${session.sessionCode ?: session.sessionId} terkirim. Menunggu approval untuk session yang sama.",
+                        error = null,
+                        shouldNavigateToTemplates = false,
+                    )
+                }
+                startApprovalPolling(token, session.sessionId)
+            }.onFailure { error ->
+                val friendlyWaMessage = toInvalidWaMessage(error.message)
+                _ui.update {
+                    it.copy(
+                        loading = false,
+                        error = if (friendlyWaMessage != null) null else (error.message ?: "Gagal kirim request manual"),
                         message = friendlyWaMessage ?: it.message,
                     )
                 }
@@ -324,7 +462,12 @@ class LaunchViewModel(
                 val rejected = status.isRejected
                 val rejectedMessage = buildRejectedMessage(status.rejectionReason, status.reviewer, status.reviewedAt)
                 if (approved) {
-                    sessionStateManager.updateFromLaunchSession(_ui.value.session, _ui.value.customerWhatsapp, token)
+                    sessionStateManager.updateFromLaunchSession(
+                        session = _ui.value.session,
+                        customerWhatsapp = _ui.value.customerWhatsapp,
+                        authToken = token,
+                        selectedEventId = _ui.value.selectedEventId,
+                    )
                 }
                 _ui.update {
                     it.copy(
@@ -332,7 +475,7 @@ class LaunchViewModel(
                         message = when {
                             approved -> "Manual payment approved. Membuka pilih template."
                             rejected -> rejectedMessage
-                            showWaitingMessage -> "Masih menunggu approve station."
+                            showWaitingMessage -> "Menunggu approval untuk session ${status.sessionCode ?: status.sessionId}."
                             else -> it.message
                         },
                         shouldNavigateToTemplates = approved,
@@ -382,6 +525,23 @@ class LaunchViewModel(
             return "No WA tidak valid (minimal 10 digit)"
         }
         return null
+    }
+
+    private fun toInvalidVoucherMessage(raw: String?): String? {
+        val message = raw?.trim().orEmpty()
+        if (message.isBlank()) return null
+        val lower = message.lowercase()
+        return if (
+            lower.contains("422") ||
+            lower.contains("unprocessable") ||
+            lower.contains("voucher tidak valid") ||
+            lower.contains("kode voucher") ||
+            (lower.contains("voucher") && lower.contains("invalid"))
+        ) {
+            "Kode voucher tidak valid"
+        } else {
+            null
+        }
     }
 }
 

@@ -172,7 +172,7 @@ fun SettingsScreen(state: BoothUiState, actions: BoothActions) {
         ChipRow {
             OutlinedButton(onClick = actions.scanExternalCamera) { Text("Scan") }
             OutlinedButton(onClick = actions.pairExternalCamera) { Text("Pairing") }
-            OutlinedButton(onClick = actions.markExternalCameraConnected) { Text("Connected") }
+            OutlinedButton(onClick = actions.markExternalCameraConnected) { Text("Connect") }
         }
         SwitchRow("Mirror live view", state.mirrorLiveView, actions.setMirrorLiveView)
         SwitchRow("Mirror capture", state.mirrorCapture, actions.setMirrorCapture)

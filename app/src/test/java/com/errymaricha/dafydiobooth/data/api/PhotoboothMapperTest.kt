@@ -100,6 +100,23 @@ class PhotoboothMapperTest {
     }
 
     @Test
+    fun `manual session request omits blank optional fields`() {
+        val request = OpenManualSessionRequest(
+            customerWhatsapp = null,
+            voucherCode = null,
+            paymentMethod = "manual",
+            additionalPrintCount = 0,
+        )
+
+        val body = json.encodeToString(OpenManualSessionRequest.serializer(), request)
+        val parsed = Json.parseToJsonElement(body).jsonObject
+
+        assertEquals("manual", parsed.getValue("payment_method").jsonPrimitive.content)
+        assertTrue(parsed.containsKey("customer_whatsapp").not())
+        assertTrue(parsed.containsKey("voucher_code").not())
+    }
+
+    @Test
     fun `pending manual payment check does not unlock capture`() {
         val response = PaymentCheckResponse(
             contractVersion = "2026-04-17",

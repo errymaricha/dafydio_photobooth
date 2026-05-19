@@ -3,6 +3,8 @@ package com.errymaricha.dafydiobooth.ui.booth
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -10,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -26,11 +27,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
 import com.errymaricha.dafydiobooth.ui.launch.LaunchUiState
+import java.io.File
 
 @Composable
 fun CameraScreen(
@@ -93,6 +95,18 @@ fun CameraScreen(
             }
         }
 
+        if (state.cameraSource == CameraSource.ExternalCanon) {
+            Button(
+                onClick = actions.capturePhoto,
+                enabled = state.externalCameraStatus == ExternalCameraStatus.Connected && !state.isLoading,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 116.dp),
+            ) {
+                Text("Capture Canon")
+            }
+        }
+
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -108,7 +122,7 @@ fun CameraScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 state.selectedTemplateSlots.sortedBy { it.slotIndex }.forEach { slot ->
-                    val captured = state.capturedPhotosBySlot.containsKey(slot.slotIndex)
+                    val captured = state.capturedPhotosBySlot.containsKey(slot.sourceSlotIndex)
                     Card(
                         colors = CardDefaults.cardColors(
                             containerColor = if (captured) {
@@ -120,7 +134,7 @@ fun CameraScreen(
                         shape = RoundedCornerShape(10.dp),
                     ) {
                         Text(
-                            text = "Slot ${slot.slotIndex}",
+                            text = "Slot ${slot.slotIndex} (S${slot.sourceSlotIndex})",
                             color = androidx.compose.ui.graphics.Color.White,
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                         )
@@ -135,19 +149,27 @@ fun CameraScreen(
 @Composable
 fun CameraSurface(state: BoothUiState) {
     Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(280.dp),
+        modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.surfaceVariant,
     ) {
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-            Text(
-                text = if (state.cameraSource == CameraSource.AndroidDefault) {
-                    "Android Camera Preview"
-                } else {
-                    "External Canon Live View: ${state.externalCameraStatus.name}"
-                },
-            )
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            val previewPath = state.externalPreviewPath
+            if (!previewPath.isNullOrBlank() && File(previewPath).exists()) {
+                AsyncImage(
+                    model = File(previewPath),
+                    contentDescription = "Canon live preview",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                )
+            } else {
+                Text(
+                    text = if (state.cameraSource == CameraSource.AndroidDefault) {
+                        "Android Camera Preview"
+                    } else {
+                        "External Canon Connected: ${state.externalCameraStatus.name} (menunggu live preview...)"
+                    },
+                )
+            }
         }
     }
 }

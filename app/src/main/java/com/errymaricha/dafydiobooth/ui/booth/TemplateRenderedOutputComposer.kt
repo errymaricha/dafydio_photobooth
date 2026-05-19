@@ -72,7 +72,7 @@ class TemplateRenderedOutputComposer(private val context: Context) {
 
         val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
         state.selectedTemplateSlots.sortedBy { it.slotIndex }.forEach { slot ->
-            val photoPath = state.capturedPhotosBySlot[slot.slotIndex] ?: return@forEach
+            val photoPath = state.capturedPhotosBySlot[slot.sourceSlotIndex] ?: return@forEach
             val photo = decodeBitmap(photoPath) ?: return@forEach
             photo.use {
                 drawPhotoInSlot(canvas, paint, it, slot)

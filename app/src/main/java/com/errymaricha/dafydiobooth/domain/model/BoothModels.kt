@@ -28,6 +28,7 @@ data class PaymentQuote(
 data class BoothSession(
     val sessionId: String,
     val sessionCode: String?,
+    val customerId: String? = null,
     val uploadUrl: String?,
     val paymentStatus: String,
     val paymentRequired: Boolean,
@@ -61,6 +62,7 @@ data class UploadCaptureResult(
 data class PaymentStatus(
     val sessionId: String,
     val sessionCode: String?,
+    val customerId: String? = null,
     val paymentStatus: String,
     val canUpload: Boolean,
     val paymentRequired: Boolean,

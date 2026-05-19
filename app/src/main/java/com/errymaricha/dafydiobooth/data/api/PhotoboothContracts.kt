@@ -79,6 +79,7 @@ data class TemplateDto(
 @Serializable
 data class TemplateSlotDto(
     @SerialName("slot_index") val slotIndex: Int,
+    @SerialName("source_slot_index") val sourceSlotIndex: Int? = null,
     @SerialName("x") val x: Int,
     @SerialName("y") val y: Int,
     @SerialName("width") val width: Int,
@@ -159,6 +160,7 @@ data class PaymentQuotePayload(
 data class CreateSessionRequest(
     @SerialName("contract_version") val contractVersion: String,
     @SerialName("device_id") val deviceId: String,
+    @SerialName("event_id") val eventId: String? = null,
     @SerialName("voucher_code") val voucherCode: String,
     @SerialName("voucher_type") val voucherType: String,
     @SerialName("quote_id") val quoteId: String,
@@ -168,6 +170,7 @@ data class CreateSessionRequest(
 
 @Serializable
 data class OpenManualSessionRequest(
+    @SerialName("event_id") val eventId: String? = null,
     @SerialName("customer_whatsapp") val customerWhatsapp: String? = null,
     @SerialName("voucher_code") val voucherCode: String? = null,
     @SerialName("payment_method") val paymentMethod: String,
@@ -175,10 +178,44 @@ data class OpenManualSessionRequest(
 )
 
 @Serializable
+data class DeviceEventDto(
+    @SerialName("id") val id: String = "",
+    @SerialName("event_id")
+    val eventIdAlias: String? = null,
+    @SerialName("event_code") val eventCode: String,
+    @SerialName("event_name") val eventName: String,
+    @SerialName("cloud_enabled") val cloudEnabled: Boolean = false,
+    @SerialName("cloud_upload_mode") val cloudUploadMode: String? = null,
+    @SerialName("cloud_sync_timing") val cloudSyncTiming: String? = null,
+    @SerialName("cloud_template_marketplace_enabled") val cloudTemplateMarketplaceEnabled: Boolean = false,
+)
+
+@Serializable
+data class CreateDeviceEventRequest(
+    @SerialName("event_code") val eventCode: String,
+    @SerialName("event_name") val eventName: String,
+    @SerialName("cloud_enabled") val cloudEnabled: Boolean,
+    @SerialName("cloud_upload_mode") val cloudUploadMode: String,
+    @SerialName("cloud_sync_timing") val cloudSyncTiming: String,
+    @SerialName("cloud_template_marketplace_enabled") val cloudTemplateMarketplaceEnabled: Boolean,
+)
+
+@Serializable
+data class UpdateDeviceEventRequest(
+    @SerialName("event_code") val eventCode: String? = null,
+    @SerialName("event_name") val eventName: String? = null,
+    @SerialName("cloud_enabled") val cloudEnabled: Boolean? = null,
+    @SerialName("cloud_upload_mode") val cloudUploadMode: String? = null,
+    @SerialName("cloud_sync_timing") val cloudSyncTiming: String? = null,
+    @SerialName("cloud_template_marketplace_enabled") val cloudTemplateMarketplaceEnabled: Boolean? = null,
+)
+
+@Serializable
 data class CreateSessionResponse(
     @SerialName("contract_version") val contractVersion: String = "",
     @SerialName("session_id") val sessionId: String,
     @SerialName("session_code") val sessionCode: String? = null,
+    @SerialName("customer_id") val customerId: String? = null,
     @SerialName("upload_url") val uploadUrl: String? = null,
     @SerialName("payment_status") val paymentStatus: String,
     @SerialName("payment_required") val paymentRequired: Boolean? = null,
@@ -195,6 +232,7 @@ data class PaymentCheckResponse(
     @SerialName("contract_version") val contractVersion: String,
     @SerialName("session_id") val sessionId: String,
     @SerialName("session_code") val sessionCode: String? = null,
+    @SerialName("customer_id") val customerId: String? = null,
     @SerialName("payment_status") val paymentStatus: String,
     @SerialName("status") val status: String? = null,
     @SerialName("approval_status") val approvalStatus: String? = null,
@@ -237,6 +275,7 @@ data class ConfirmPaymentResponse(
     @SerialName("contract_version") val contractVersion: String,
     @SerialName("session_id") val sessionId: String,
     @SerialName("session_code") val sessionCode: String? = null,
+    @SerialName("customer_id") val customerId: String? = null,
     @SerialName("payment_status") val paymentStatus: String,
     @SerialName("can_upload") val canUpload: Boolean? = null,
     @SerialName("payment_required") val paymentRequired: Boolean? = null,

@@ -43,6 +43,7 @@ class PhotoboothFlowIntegrationTest {
 
         val session = useCases.createSession(
             "device-1",
+            "event-1",
             "VCH-001",
             "regular",
             quote.value.quoteId,
@@ -112,6 +113,7 @@ private class FakePhotoboothRepository : PhotoboothRepository {
 
     override suspend fun createSession(
         deviceId: String,
+        eventId: String,
         voucherCode: String,
         voucherType: String,
         quoteId: String,

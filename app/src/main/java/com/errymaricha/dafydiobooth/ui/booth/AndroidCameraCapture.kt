@@ -326,9 +326,11 @@ private fun GridOverlay(state: BoothUiState) {
         val canvasWidth = state.selectedTemplateCanvasWidth.takeIf { it > 0 } ?: return@Canvas
         val canvasHeight = state.selectedTemplateCanvasHeight.takeIf { it > 0 } ?: return@Canvas
         val orderedSlots = state.selectedTemplateSlots.sortedBy { it.slotIndex }
-        val activeSlot = orderedSlots.firstOrNull { slot ->
-            !state.capturedPhotosBySlot.containsKey(slot.slotIndex)
-        } ?: orderedSlots.lastOrNull()
+        val captureSlots = orderedSlots.map { it.sourceSlotIndex }.distinct().sorted()
+        val nextCaptureSlot = captureSlots.firstOrNull { !state.capturedPhotosBySlot.containsKey(it) }
+            ?: captureSlots.lastOrNull()
+        val activeSlot = orderedSlots.firstOrNull { it.sourceSlotIndex == nextCaptureSlot }
+            ?: orderedSlots.lastOrNull()
             ?: return@Canvas
 
         val slotAspect = (activeSlot.width.toFloat() / activeSlot.height.toFloat()).coerceAtLeast(0.1f)

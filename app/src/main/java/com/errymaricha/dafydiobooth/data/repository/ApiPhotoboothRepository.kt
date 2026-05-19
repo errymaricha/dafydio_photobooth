@@ -78,23 +78,28 @@ class ApiPhotoboothRepository(
 
     override suspend fun createSession(
         deviceId: String,
+        eventId: String,
         voucherCode: String,
         voucherType: String,
         quoteId: String,
         sessionType: String,
         customerId: String?,
     ): BoothResult<BoothSession> = safeApiCall {
-        api.createSession(
+        val response = api.createSession(
             CreateSessionRequest(
                 contractVersion = contractVersion,
                 deviceId = deviceId,
+                eventId = eventId.ifBlank { null },
                 voucherCode = voucherCode,
                 voucherType = voucherType,
                 quoteId = quoteId,
                 sessionType = sessionType,
                 customerId = customerId?.ifBlank { null },
             ),
-        ).toDomain()
+        )
+        response.toDomain().copy(
+            customerId = response.customerId ?: customerId?.ifBlank { null },
+        )
     }
 
     override suspend fun paymentCheck(sessionId: String): BoothResult<PaymentStatus> = safeApiCall {
@@ -119,6 +124,7 @@ class ApiPhotoboothRepository(
             PaymentStatus(
                 sessionId = it.sessionId,
                 sessionCode = it.sessionCode,
+                customerId = it.customerId,
                 paymentStatus = it.paymentStatus,
                 canUpload = it.canUpload ?: it.unlockPhoto ?: it.paymentRequired == false,
                 paymentRequired = it.paymentRequired ?: it.paymentStatus != "paid",

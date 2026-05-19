@@ -6,6 +6,16 @@ data class LaunchPricing(
     val currencyCode: String,
 )
 
+data class LaunchEvent(
+    val eventId: String,
+    val eventCode: String,
+    val eventName: String,
+    val cloudEnabled: Boolean,
+    val cloudUploadMode: String?,
+    val cloudSyncTiming: String?,
+    val cloudTemplateMarketplaceEnabled: Boolean,
+)
+
 data class LaunchContext(
     val customerWhatsapp: String,
     val pricing: LaunchPricing,
@@ -14,6 +24,7 @@ data class LaunchContext(
 data class LaunchSession(
     val sessionId: String,
     val sessionCode: String?,
+    val customerId: String? = null,
     val uploadUrl: String?,
     val paymentStatus: String,
     val paymentRequired: Boolean,
@@ -23,6 +34,7 @@ data class LaunchSession(
 data class LaunchPaymentStatus(
     val sessionId: String,
     val sessionCode: String?,
+    val customerId: String? = null,
     val paymentStatus: String,
     val reviewStatus: String? = null,
     val canUpload: Boolean,

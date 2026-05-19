@@ -29,6 +29,16 @@ object PreviewStateProvider {
     )
 
     val launchBase = dashboardConnected.copy(step = BoothStep.LaunchEvent)
+    val settingEventBase = dashboardConnected.copy(
+        step = BoothStep.SettingEvent,
+        customerWhatsapp = "628123456789",
+        customerId = "CUST-001",
+        launchAdditionalPrintCount = 2,
+        voucherCode = "PROMO2026",
+        voucherType = "regular",
+        sessionType = "photo",
+        paymentMethod = "manual",
+    )
     val templateBase = dashboardConnected.copy(step = BoothStep.TemplatePreview, templateSlotCount = 2, nextCaptureIndex = 1)
     val settingsBase = dashboardConnected.copy(
         step = BoothStep.Settings,

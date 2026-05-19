@@ -27,6 +27,7 @@ interface PhotoboothRepository {
 
     suspend fun createSession(
         deviceId: String,
+        eventId: String,
         voucherCode: String,
         voucherType: String,
         quoteId: String,

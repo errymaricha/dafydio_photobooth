@@ -79,6 +79,7 @@ private enum class BoothRoute(val route: String) {
     Settings("settings"),
     LaunchEvent("launch-event"),
     SettingEvent("setting-event"),
+    SettingAllowedTemplates("setting-allowed-templates"),
     VoucherCheck("voucher-check"),
     PaymentGate("payment-gate"),
     WaitingApproval("waiting-approval"),
@@ -88,11 +89,13 @@ private fun BoothViewModel.toActions() = BoothActions(
     continueFromSplash = ::continueFromSplash,
     openDashboard = ::openDashboard,
     startNowPhoto = ::startNowPhoto,
+    openConnectedTemplateFlow = ::openConnectedTemplateFlow,
     openCustomTemplate = ::openCustomTemplate,
     openSettings = ::openSettings,
     disconnectStation = ::disconnectStation,
     openLaunchEvent = ::openLaunchEvent,
     openSettingEvent = ::openSettingEvent,
+    openSettingAllowedTemplates = ::openSettingAllowedTemplates,
     syncLaunchSession = ::syncLaunchSession,
     startLaunchEventGate = ::startLaunchEventGate,
     selectTemplate = ::selectTemplate,
@@ -108,6 +111,14 @@ private fun BoothViewModel.toActions() = BoothActions(
     updateDeviceId = ::updateDeviceId,
     updateToken = ::updateToken,
     refreshTemplates = ::refreshTemplates,
+    updateCustomerWhatsapp = ::updateCustomerWhatsapp,
+    updateLaunchEventName = ::updateLaunchEventName,
+    setLaunchSelectedEventId = ::setLaunchSelectedEventId,
+    toggleLaunchAllowedTemplate = ::toggleLaunchAllowedTemplate,
+    clearLaunchAllowedTemplates = ::clearLaunchAllowedTemplates,
+    selectAllLaunchAllowedTemplates = ::selectAllLaunchAllowedTemplates,
+    updateLaunchTemplateSearchQuery = ::updateLaunchTemplateSearchQuery,
+    updateLaunchAdditionalPrintCount = ::updateLaunchAdditionalPrintCount,
     updateVoucherCode = ::updateVoucherCode,
     updateVoucherType = ::updateVoucherType,
     updateSessionType = ::updateSessionType,
@@ -139,18 +150,21 @@ private fun BoothViewModel.toActions() = BoothActions(
     onStoragePermissionDenied = ::onStoragePermissionDenied,
     retry = ::retry,
     sendHeartbeatNow = ::sendHeartbeatNow,
+    onStepChanged = ::onStepChanged,
 )
 
 data class BoothActions(
     val continueFromSplash: () -> Unit = {},
     val openDashboard: () -> Unit = {},
     val startNowPhoto: () -> Unit = {},
+    val openConnectedTemplateFlow: () -> Unit = {},
     val openCustomTemplate: () -> Unit = {},
     val openSettings: () -> Unit = {},
     val disconnectStation: () -> Unit = {},
     val openLaunchEvent: () -> Unit = {},
     val openSettingEvent: () -> Unit = {},
-    val syncLaunchSession: (LaunchSession?, String, String?) -> Unit = { _, _, _ -> },
+    val openSettingAllowedTemplates: () -> Unit = {},
+    val syncLaunchSession: (LaunchSession?, String, String?, String) -> Unit = { _, _, _, _ -> },
     val startLaunchEventGate: () -> Unit = {},
     val selectTemplate: (String) -> Unit = {},
     val saveCustomTemplate: (String) -> Unit = {},
@@ -165,6 +179,14 @@ data class BoothActions(
     val updateDeviceId: (String) -> Unit = {},
     val updateToken: (String) -> Unit = {},
     val refreshTemplates: () -> Unit = {},
+    val updateCustomerWhatsapp: (String) -> Unit = {},
+    val updateLaunchEventName: (String) -> Unit = {},
+    val setLaunchSelectedEventId: (String) -> Unit = {},
+    val toggleLaunchAllowedTemplate: (String) -> Unit = {},
+    val clearLaunchAllowedTemplates: () -> Unit = {},
+    val selectAllLaunchAllowedTemplates: () -> Unit = {},
+    val updateLaunchTemplateSearchQuery: (String) -> Unit = {},
+    val updateLaunchAdditionalPrintCount: (String) -> Unit = {},
     val updateVoucherCode: (String) -> Unit = {},
     val updateVoucherType: (String) -> Unit = {},
     val updateSessionType: (String) -> Unit = {},
@@ -196,9 +218,15 @@ data class BoothActions(
     val onStoragePermissionDenied: () -> Unit = {},
     val retry: () -> Unit = {},
     val sendHeartbeatNow: (String) -> Unit = {},
+    val onStepChanged: (BoothStep) -> Unit = {},
 )
 
 private fun LaunchViewModel.toActions() = LaunchActions(
+    onEventCodeChanged = ::onEventCodeChanged,
+    onEventNameChanged = ::onEventNameChanged,
+    onSelectEvent = ::onSelectEvent,
+    refreshEvents = ::refreshEvents,
+    createOrUpdateEvent = ::createOrUpdateEvent,
     onWhatsappChanged = ::onWhatsappChanged,
     onAdditionalPrintChanged = ::onAdditionalPrintChanged,
     onVoucherCodeChanged = ::onVoucherCodeChanged,
@@ -209,6 +237,11 @@ private fun LaunchViewModel.toActions() = LaunchActions(
 )
 
 data class LaunchActions(
+    val onEventCodeChanged: (String) -> Unit = {},
+    val onEventNameChanged: (String) -> Unit = {},
+    val onSelectEvent: (String) -> Unit = {},
+    val refreshEvents: () -> Unit = {},
+    val createOrUpdateEvent: () -> Unit = {},
     val onWhatsappChanged: (String) -> Unit = {},
     val onAdditionalPrintChanged: (Int) -> Unit = {},
     val onVoucherCodeChanged: (String) -> Unit = {},
@@ -251,6 +284,7 @@ fun BoothApp(
     }
 
     LaunchedEffect(state.step) {
+        actions.onStepChanged(state.step)
         navController.navigate(state.step.toRoute().route) {
             launchSingleTop = true
             if (state.step == BoothStep.Splash) {
@@ -267,19 +301,35 @@ fun BoothApp(
     }
 
     LaunchedEffect(state.step, state.deviceId, state.token) {
-        if (state.step == BoothStep.LaunchEvent && state.isStationConnected) {
+        if ((state.step == BoothStep.LaunchEvent || state.step == BoothStep.SettingEvent) && state.isStationConnected) {
+            if (state.launchSelectedEventId.isNotBlank()) {
+                launchViewModel.onSelectEvent(state.launchSelectedEventId)
+            }
             launchViewModel.init(
                 deviceCode = state.deviceId,
                 apiKey = state.token,
             )
-            launchViewModel.onWhatsappChanged(state.customerId)
+            if (launchState.customerWhatsapp.isBlank() && state.customerWhatsapp.isNotBlank()) {
+                launchViewModel.onWhatsappChanged(state.customerWhatsapp)
+            }
+            if (launchState.voucherCode.isBlank() && state.voucherCode.isNotBlank()) {
+                launchViewModel.onVoucherCodeChanged(state.voucherCode)
+            }
+            if (launchState.additionalPrintCount == 0 && state.launchAdditionalPrintCount > 0) {
+                launchViewModel.onAdditionalPrintChanged(state.launchAdditionalPrintCount)
+            }
         }
     }
 
     LaunchedEffect(launchState.shouldNavigateToTemplates) {
         if (launchState.shouldNavigateToTemplates) {
-            actions.syncLaunchSession(launchState.session, launchState.customerWhatsapp, launchState.token)
-            actions.startNowPhoto()
+            actions.syncLaunchSession(
+                launchState.session,
+                launchState.customerWhatsapp,
+                launchState.token,
+                launchState.selectedEventId,
+            )
+            actions.openConnectedTemplateFlow()
             launchViewModel.consumeTemplateNavigation()
         }
     }
@@ -343,7 +393,15 @@ fun BoothApp(
                 )
             }
             composable(BoothRoute.SettingEvent.route) {
-                SettingEventScreen(state = state, actions = actions)
+                SettingEventScreen(
+                    state = state,
+                    launchState = launchState,
+                    actions = actions,
+                    launchActions = launchActions,
+                )
+            }
+            composable(BoothRoute.SettingAllowedTemplates.route) {
+                AllowedTemplatesScreen(state = state, actions = actions)
             }
             composable(BoothRoute.VoucherCheck.route) {
                 VoucherCheckScreen(state = state, actions = actions)
@@ -403,9 +461,38 @@ fun ScreenFrame(
             CircularProgressIndicator()
         }
         state.errorMessage?.let { message ->
-            Text(message, color = MaterialTheme.colorScheme.error)
-            OutlinedButton(onClick = actions.retry, enabled = !state.isLoading) {
-                Text("Retry")
+            val isTemplateMappingError = message.contains("Template mapping invalid", ignoreCase = true)
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = if (isTemplateMappingError) "Template Mapping Error" else "Terjadi Kesalahan",
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = message,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                    )
+                    if (isTemplateMappingError) {
+                        Text(
+                            text = "Langkah: sync template ulang dari station, lalu pilih template lagi.",
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    OutlinedButton(
+                        onClick = actions.retry,
+                        enabled = !state.isLoading,
+                    ) {
+                        Text("Retry")
+                    }
+                }
             }
         }
         content()
@@ -493,7 +580,7 @@ fun TemplateSurface(state: BoothUiState) {
                 val w = frameWidth * (slot.width.toFloat() / canvasWidth.toFloat())
                 val h = frameHeight * (slot.height.toFloat() / canvasHeight.toFloat())
                 val r = frameWidth * (slot.borderRadius.toFloat() / canvasWidth.toFloat())
-                val photoPath = state.capturedPhotosBySlot[slot.slotIndex]
+                val photoPath = state.capturedPhotosBySlot[slot.sourceSlotIndex]
                 if (photoPath != null) {
                     AsyncImage(
                         model = File(photoPath),
@@ -560,6 +647,7 @@ private fun BoothStep.toRoute(): BoothRoute = when (this) {
     BoothStep.Settings -> BoothRoute.Settings
     BoothStep.LaunchEvent -> BoothRoute.LaunchEvent
     BoothStep.SettingEvent -> BoothRoute.SettingEvent
+    BoothStep.SettingAllowedTemplates -> BoothRoute.SettingAllowedTemplates
     BoothStep.VoucherCheck -> BoothRoute.VoucherCheck
     BoothStep.PaymentGate -> BoothRoute.PaymentGate
     BoothStep.WaitingApproval -> BoothRoute.WaitingApproval

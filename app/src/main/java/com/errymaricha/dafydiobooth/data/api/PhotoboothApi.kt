@@ -10,6 +10,7 @@ import retrofit2.http.Header
 import retrofit2.http.Multipart
 import retrofit2.http.POST
 import retrofit2.http.Part
+import retrofit2.http.PATCH
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -60,6 +61,24 @@ interface PhotoboothApi {
         @Header("Authorization") bearerToken: String,
         @Body request: OpenManualSessionRequest,
     ): SessionCreateResponse
+
+    @GET("api/device/events")
+    suspend fun listEvents(
+        @Header("Authorization") bearerToken: String? = null,
+    ): JsonElement
+
+    @POST("api/device/events")
+    suspend fun createEvent(
+        @Header("Authorization") bearerToken: String? = null,
+        @Body request: CreateDeviceEventRequest,
+    ): JsonElement
+
+    @PATCH("api/device/events/{eventId}")
+    suspend fun updateEvent(
+        @Path("eventId") eventId: String,
+        @Header("Authorization") bearerToken: String? = null,
+        @Body request: UpdateDeviceEventRequest,
+    ): JsonElement
 
     @GET("api/device/sessions/{id}/payment-check")
     suspend fun paymentCheck(

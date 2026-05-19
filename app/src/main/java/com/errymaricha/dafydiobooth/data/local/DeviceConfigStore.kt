@@ -23,6 +23,16 @@ data class DeviceConfig(
     val token: String = "",
     val authToken: String = "",
     val stationIp: String = BuildConfig.BASE_URL,
+    val customerId: String = "",
+    val customerWhatsapp: String = "",
+    val launchEventName: String = "",
+    val launchSelectedEventId: String = "",
+    val launchAllowedTemplateIds: Set<String> = emptySet(),
+    val launchAdditionalPrintCount: Int = 0,
+    val voucherCode: String = "",
+    val voucherType: String = "regular",
+    val sessionType: String = "photo",
+    val paymentMethod: String = "manual",
     val cameraSource: String = "AndroidDefault",
     val externalCameraStatus: String = "Disconnected",
     val mirrorLiveView: Boolean = false,
@@ -44,6 +54,16 @@ class DeviceConfigStore(private val context: Context) {
     private val tokenKey = stringPreferencesKey("token")
     private val authTokenKey = stringPreferencesKey("auth_token")
     private val stationIpKey = stringPreferencesKey("station_ip")
+    private val customerIdKey = stringPreferencesKey("customer_id")
+    private val customerWhatsappKey = stringPreferencesKey("customer_whatsapp")
+    private val launchEventNameKey = stringPreferencesKey("launch_event_name")
+    private val launchSelectedEventIdKey = stringPreferencesKey("launch_selected_event_id")
+    private val launchAllowedTemplateIdsKey = stringPreferencesKey("launch_allowed_template_ids")
+    private val launchAdditionalPrintCountKey = intPreferencesKey("launch_additional_print_count")
+    private val voucherCodeKey = stringPreferencesKey("voucher_code")
+    private val voucherTypeKey = stringPreferencesKey("voucher_type")
+    private val sessionTypeKey = stringPreferencesKey("session_type")
+    private val paymentMethodKey = stringPreferencesKey("payment_method")
     private val cameraSourceKey = stringPreferencesKey("camera_source")
     private val externalCameraStatusKey = stringPreferencesKey("external_camera_status")
     private val mirrorLiveViewKey = booleanPreferencesKey("mirror_live_view")
@@ -65,6 +85,16 @@ class DeviceConfigStore(private val context: Context) {
             token = preferences[tokenKey].orEmpty(),
             authToken = preferences[authTokenKey].orEmpty(),
             stationIp = preferences[stationIpKey] ?: BuildConfig.BASE_URL,
+            customerId = preferences[customerIdKey].orEmpty(),
+            customerWhatsapp = preferences[customerWhatsappKey].orEmpty(),
+            launchEventName = preferences[launchEventNameKey].orEmpty(),
+            launchSelectedEventId = preferences[launchSelectedEventIdKey].orEmpty(),
+            launchAllowedTemplateIds = parseTemplateIds(preferences[launchAllowedTemplateIdsKey].orEmpty()),
+            launchAdditionalPrintCount = preferences[launchAdditionalPrintCountKey] ?: 0,
+            voucherCode = preferences[voucherCodeKey].orEmpty(),
+            voucherType = preferences[voucherTypeKey] ?: "regular",
+            sessionType = preferences[sessionTypeKey] ?: "photo",
+            paymentMethod = preferences[paymentMethodKey] ?: "manual",
             cameraSource = preferences[cameraSourceKey] ?: "AndroidDefault",
             externalCameraStatus = preferences[externalCameraStatusKey] ?: "Disconnected",
             mirrorLiveView = preferences[mirrorLiveViewKey] ?: false,
@@ -109,6 +139,16 @@ class DeviceConfigStore(private val context: Context) {
             preferences[tokenKey] = config.token
             preferences[authTokenKey] = config.authToken
             preferences[stationIpKey] = config.stationIp
+            preferences[customerIdKey] = config.customerId
+            preferences[customerWhatsappKey] = config.customerWhatsapp
+            preferences[launchEventNameKey] = config.launchEventName
+            preferences[launchSelectedEventIdKey] = config.launchSelectedEventId
+            preferences[launchAllowedTemplateIdsKey] = encodeTemplateIds(config.launchAllowedTemplateIds)
+            preferences[launchAdditionalPrintCountKey] = config.launchAdditionalPrintCount.coerceAtLeast(0)
+            preferences[voucherCodeKey] = config.voucherCode
+            preferences[voucherTypeKey] = config.voucherType
+            preferences[sessionTypeKey] = config.sessionType
+            preferences[paymentMethodKey] = config.paymentMethod
             preferences[cameraSourceKey] = config.cameraSource
             preferences[externalCameraStatusKey] = config.externalCameraStatus
             preferences[mirrorLiveViewKey] = config.mirrorLiveView
@@ -133,6 +173,19 @@ class DeviceConfigStore(private val context: Context) {
             )
         }
     }
+}
+
+private fun parseTemplateIds(raw: String): Set<String> {
+    if (raw.isBlank()) return emptySet()
+    return raw.split(",")
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .toSet()
+}
+
+private fun encodeTemplateIds(ids: Set<String>): String {
+    if (ids.isEmpty()) return ""
+    return ids.joinToString(",")
 }
 
 @Serializable

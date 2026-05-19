@@ -6,6 +6,7 @@ import com.errymaricha.dafydiobooth.ui.booth.BoothActions
 import com.errymaricha.dafydiobooth.ui.booth.BoothStep
 import com.errymaricha.dafydiobooth.ui.booth.LaunchActions
 import com.errymaricha.dafydiobooth.ui.booth.LaunchEventScreen
+import com.errymaricha.dafydiobooth.ui.booth.SettingEventScreen
 import com.errymaricha.dafydiobooth.ui.booth.PaymentGateScreen
 import com.errymaricha.dafydiobooth.ui.booth.VoucherCheckScreen
 import com.errymaricha.dafydiobooth.ui.booth.WaitingApprovalScreen
@@ -30,6 +31,32 @@ private fun LaunchEventTabletPreview() {
     DafydioBoothTheme {
         LaunchEventScreen(
             state = PreviewStateProvider.launchBase,
+            launchState = PreviewStateProvider.launchUiBase,
+            actions = BoothActions(),
+            launchActions = LaunchActions(),
+        )
+    }
+}
+
+@Preview(name = "Setting Event Mobile", widthDp = 390, heightDp = 844, showBackground = true)
+@Composable
+private fun SettingEventMobilePreview() {
+    DafydioBoothTheme {
+        SettingEventScreen(
+            state = PreviewStateProvider.settingEventBase,
+            launchState = PreviewStateProvider.launchUiBase,
+            actions = BoothActions(),
+            launchActions = LaunchActions(),
+        )
+    }
+}
+
+@Preview(name = "Setting Event Tablet", widthDp = 1280, heightDp = 800, showBackground = true)
+@Composable
+private fun SettingEventTabletPreview() {
+    DafydioBoothTheme {
+        SettingEventScreen(
+            state = PreviewStateProvider.settingEventBase,
             launchState = PreviewStateProvider.launchUiBase,
             actions = BoothActions(),
             launchActions = LaunchActions(),

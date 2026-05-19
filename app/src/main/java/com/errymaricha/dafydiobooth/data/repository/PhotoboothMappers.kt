@@ -43,6 +43,7 @@ fun PaymentQuoteResponse.toDomain() = PaymentQuote(
 fun CreateSessionResponse.toDomain() = BoothSession(
     sessionId = sessionId,
     sessionCode = sessionCode,
+    customerId = customerId,
     uploadUrl = uploadUrl,
     paymentStatus = paymentStatus,
     paymentRequired = paymentRequired ?: paymentStatus != "paid",
@@ -52,6 +53,7 @@ fun CreateSessionResponse.toDomain() = BoothSession(
 fun PaymentCheckResponse.toDomain() = PaymentStatus(
     sessionId = sessionId,
     sessionCode = sessionCode,
+    customerId = customerId,
     paymentStatus = paymentStatus,
     canUpload = canUpload == true || paymentUnlocked == true || unlockPhoto == true,
     paymentRequired = paymentRequired ?: paymentStatus != "paid",

@@ -1,6 +1,7 @@
 package com.errymaricha.dafydiobooth.ui.launch
 
 import com.errymaricha.dafydiobooth.domain.model.LaunchPricing
+import com.errymaricha.dafydiobooth.domain.model.LaunchEvent
 import com.errymaricha.dafydiobooth.domain.model.LaunchSession
 import com.errymaricha.dafydiobooth.domain.model.PaymentQuote
 import com.errymaricha.dafydiobooth.domain.model.VoucherVerification
@@ -10,6 +11,10 @@ data class LaunchUiState(
     val loading: Boolean = false,
     val token: String? = null,
     val session: LaunchSession? = null,
+    val events: List<LaunchEvent> = emptyList(),
+    val selectedEventId: String = "",
+    val eventCodeInput: String = "",
+    val eventNameInput: String = "",
     val customerWhatsapp: String = "",
     val voucherCode: String = "",
     val voucher: VoucherVerification? = null,
