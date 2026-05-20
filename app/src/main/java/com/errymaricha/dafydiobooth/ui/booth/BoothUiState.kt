@@ -65,6 +65,7 @@ data class BoothUiState(
     val cameraSource: CameraSource = CameraSource.AndroidDefault,
     val externalCameraStatus: ExternalCameraStatus = ExternalCameraStatus.Disconnected,
     val externalPreviewPath: String? = null,
+    val externalPreviewBytes: ByteArray? = null,
     val mirrorLiveView: Boolean = false,
     val mirrorCapture: Boolean = false,
     val imageQuality: ImageQuality = ImageQuality.High,

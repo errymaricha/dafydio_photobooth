@@ -2,6 +2,7 @@ package com.errymaricha.dafydiobooth.ui.booth
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,14 +26,16 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import coil3.compose.AsyncImage
 import com.errymaricha.dafydiobooth.ui.launch.LaunchUiState
-import java.io.File
+import android.graphics.BitmapFactory
 
 @Composable
 fun CameraScreen(
@@ -105,6 +108,15 @@ fun CameraScreen(
             ) {
                 Text("Capture Canon")
             }
+
+            ExternalCameraRecoveryPanel(
+                state = state,
+                actions = actions,
+                modifier = Modifier
+                    .statusBarsPadding()
+                    .align(Alignment.TopCenter)
+                    .padding(top = 12.dp, start = 12.dp, end = 12.dp),
+            )
         }
 
         Column(
@@ -153,14 +165,26 @@ fun CameraSurface(state: BoothUiState) {
         color = MaterialTheme.colorScheme.surfaceVariant,
     ) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            val previewPath = state.externalPreviewPath
-            if (!previewPath.isNullOrBlank() && File(previewPath).exists()) {
-                AsyncImage(
-                    model = File(previewPath),
-                    contentDescription = "Canon live preview",
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                )
+            val previewBytes = state.externalPreviewBytes
+            if (previewBytes != null) {
+                val previewBitmap = remember(previewBytes) {
+                    BitmapFactory.decodeByteArray(previewBytes, 0, previewBytes.size)
+                }
+                DisposableEffect(previewBitmap) {
+                    onDispose { previewBitmap?.recycle() }
+                }
+                if (previewBitmap != null) {
+                    Image(
+                        bitmap = previewBitmap.asImageBitmap(),
+                        contentDescription = "Canon live preview",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit,
+                    )
+                } else {
+                    Text(
+                        text = "External Canon Connected: decode preview gagal",
+                    )
+                }
             } else {
                 Text(
                     text = if (state.cameraSource == CameraSource.AndroidDefault) {
@@ -169,6 +193,59 @@ fun CameraSurface(state: BoothUiState) {
                         "External Canon Connected: ${state.externalCameraStatus.name} (menunggu live preview...)"
                     },
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExternalCameraRecoveryPanel(
+    state: BoothUiState,
+    actions: BoothActions,
+    modifier: Modifier = Modifier,
+) {
+    val connectionHint = when (state.externalCameraStatus) {
+        ExternalCameraStatus.Connected -> "Canon connected. Siap capture."
+        ExternalCameraStatus.Pairing -> "Lanjutkan Pairing/Connect setelah izin USB muncul."
+        ExternalCameraStatus.Scanning -> "Sedang scan kamera Canon..."
+        ExternalCameraStatus.Disconnected -> "Canon belum terhubung. Jalankan Scan -> Pairing -> Connect."
+    }
+    val error = state.errorMessage?.takeIf {
+        it.contains("Canon", ignoreCase = true) || it.contains("USB", ignoreCase = true)
+    }
+    val shouldShow = state.externalCameraStatus != ExternalCameraStatus.Connected || !error.isNullOrBlank()
+    if (!shouldShow) return
+
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.72f),
+        ),
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = "External Camera Recovery",
+                color = androidx.compose.ui.graphics.Color.White,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = connectionHint,
+                color = androidx.compose.ui.graphics.Color.White,
+            )
+            if (!error.isNullOrBlank()) {
+                Text(
+                    text = "Error: $error",
+                    color = androidx.compose.ui.graphics.Color(0xFFFFCDD2),
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = actions.scanExternalCamera, enabled = !state.isLoading) { Text("Scan") }
+                OutlinedButton(onClick = actions.pairExternalCamera, enabled = !state.isLoading) { Text("Pairing") }
+                OutlinedButton(onClick = actions.markExternalCameraConnected, enabled = !state.isLoading) { Text("Connect") }
             }
         }
     }

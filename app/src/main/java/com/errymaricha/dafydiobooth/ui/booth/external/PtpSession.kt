@@ -72,10 +72,16 @@ class PtpSession(
         synchronized(commandLock) {
             if (!openSession()) return false
             val half = sendCommand(PtpPacket.OC_EOS_REMOTE_RELEASE_ON, intArrayOf(1, 0))
+            if (half != PtpPacket.RC_OK) {
+                sendCommand(PtpPacket.OC_EOS_REMOTE_RELEASE_OFF, intArrayOf(1))
+                return false
+            }
+            // Give AF a brief settle window before full press.
+            Thread.sleep(180)
             val full = sendCommand(PtpPacket.OC_EOS_REMOTE_RELEASE_ON, intArrayOf(2, 0))
             sendCommand(PtpPacket.OC_EOS_REMOTE_RELEASE_OFF, intArrayOf(2))
             sendCommand(PtpPacket.OC_EOS_REMOTE_RELEASE_OFF, intArrayOf(1))
-            return half == PtpPacket.RC_OK && full == PtpPacket.RC_OK
+            return full == PtpPacket.RC_OK
         }
     }
 
@@ -103,6 +109,11 @@ class PtpSession(
         if (evfFrame != null) {
             Log.d("PtpSession", "preview evf ok bytes=${evfFrame.size}")
             return evfFrame
+        }
+        // Keep EVF loop lightweight. Fallback to object/thumb can block several seconds
+        // and causes visible freeze. For live preview, prefer fast null and next poll.
+        if (liveViewStarted) {
+            return null
         }
         val handles = listObjectHandles() ?: return null
         if (handles.isEmpty()) return null
@@ -139,12 +150,33 @@ class PtpSession(
         return liveViewStarted
     }
 
+    fun stopLiveView(): Boolean {
+        synchronized(commandLock) {
+            if (!liveViewStarted) return true
+            val ok = setEosIntProperty(PtpPacket.DPC_EOS_EVF_OUTPUT_DEVICE, 0)
+            liveViewStarted = false
+            evfMissCount = 0
+            Log.d("PtpSession", "stopLiveView ok=$ok")
+            return ok
+        }
+    }
+
     private fun readLiveViewJpeg(): ByteArray? {
         if (!liveViewStarted && !startLiveView()) return null
         val data = sendCommandExpectData(
             code = PtpPacket.OC_EOS_GET_VIEWFINDER_DATA,
             params = intArrayOf(0x00200000, 0, 0),
-        ) ?: return null
+            timeoutMs = 1200,
+        )
+        if (data == null) {
+            evfMissCount++
+            if (evfMissCount >= 4) {
+                Log.d("PtpSession", "evf no-data threshold reached, retry live view init")
+                liveViewStarted = false
+                evfMissCount = 0
+            }
+            return null
+        }
         val jpeg = extractJpeg(data.payload)
         if (jpeg != null) {
             evfMissCount = 0
@@ -309,11 +341,15 @@ class PtpSession(
         return response == PtpPacket.RC_OK
     }
 
-    private fun sendCommandExpectData(code: Int, params: IntArray = intArrayOf()): PtpPacket.ParsedContainer? {
+    private fun sendCommandExpectData(
+        code: Int,
+        params: IntArray = intArrayOf(),
+        timeoutMs: Int = 15_000,
+    ): PtpPacket.ParsedContainer? {
         val packet = PtpPacket.buildCommand(code, nextTransactionId(), params)
         if (!bulkWrite(packet)) return null
-        val dataBytes = readContainerBytes(timeoutMs = 15_000) ?: return null
-        val responseBytes = readContainerBytes(timeoutMs = 15_000) ?: return null
+        val dataBytes = readContainerBytes(timeoutMs = timeoutMs) ?: return null
+        val responseBytes = readContainerBytes(timeoutMs = timeoutMs) ?: return null
         val response = PtpPacket.parseContainer(responseBytes, responseBytes.size) ?: return null
         if (response.code != PtpPacket.RC_OK) return null
         return PtpPacket.parseContainer(dataBytes, dataBytes.size)

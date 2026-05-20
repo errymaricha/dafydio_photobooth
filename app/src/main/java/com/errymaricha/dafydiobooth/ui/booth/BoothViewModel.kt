@@ -71,6 +71,7 @@ class BoothViewModel(
     private val externalCaptureStore = ExternalCaptureStore(appContext)
     private var canonPtpSession: PtpSession? = null
     private var externalPreviewJob: Job? = null
+    private var lastPreviewUiUpdateAt: Long = 0L
 
     init {
         viewModelScope.launch {
@@ -219,7 +220,7 @@ class BoothViewModel(
         if (step != BoothStep.Camera) {
             externalPreviewJob?.cancel()
             externalPreviewJob = null
-            _state.update { it.copy(externalPreviewPath = null) }
+            _state.update { it.copy(externalPreviewPath = null, externalPreviewBytes = null) }
         }
     }
 
@@ -1127,7 +1128,7 @@ class BoothViewModel(
         if (value != CameraSource.ExternalCanon) {
             externalPreviewJob?.cancel()
             externalPreviewJob = null
-            it.copy(cameraSource = value, externalPreviewPath = null)
+            it.copy(cameraSource = value, externalPreviewPath = null, externalPreviewBytes = null)
         } else {
             it.copy(cameraSource = value)
         }
@@ -1653,23 +1654,24 @@ class BoothViewModel(
                 if (snapshot.cameraSource != CameraSource.ExternalCanon ||
                     snapshot.externalCameraStatus != ExternalCameraStatus.Connected
                 ) {
-                    _state.update { it.copy(externalPreviewPath = null) }
+                    _state.update { it.copy(externalPreviewPath = null, externalPreviewBytes = null) }
                     break
                 }
                 val previewBytes = session.downloadLatestPreviewJpeg()
                 if (previewBytes != null) {
                     // Ignore tiny thumb frames to keep preview stable on EVF stream.
                     if (previewBytes.size >= 50 * 1024) {
-                        val path = externalCaptureStore.savePreviewJpeg(previewBytes)
-                        if (!path.isNullOrBlank()) {
-                            _state.update { it.copy(externalPreviewPath = path) }
-                            logSlotDebug("canonPreview updated bytes=${previewBytes.size} path=$path")
+                        val now = System.currentTimeMillis()
+                        if (now - lastPreviewUiUpdateAt >= 160) {
+                            lastPreviewUiUpdateAt = now
+                            _state.update { it.copy(externalPreviewBytes = previewBytes) }
+                            logSlotDebug("canonPreview updated bytes=${previewBytes.size} source=memory")
                         }
                     }
                 } else {
                     logSlotDebug("canonPreview unavailable on this poll")
                 }
-                delay(300)
+                delay(120)
             }
         }
     }
@@ -1689,8 +1691,15 @@ class BoothViewModel(
         externalPreviewJob = null
         _state.update { it.copy(isLoading = true, errorMessage = null, eventStatusMessage = "Trigger shutter Canon...") }
         val filePath = withContext(Dispatchers.IO) {
+            ptp.stopLiveView()
             val beforeHandles = ptp.listObjectHandles().orEmpty().toSet()
-            val fired = ptp.triggerShutter()
+            var fired = false
+            for (retry in 0 until 3) {
+                fired = ptp.triggerShutter()
+                if (fired) break
+                logSlotDebug("canonCapture trigger retry=${retry + 1}")
+                delay(250)
+            }
             if (!fired) return@withContext null
             // Wait until camera publishes a new object handle, then download that object.
             var jpeg: ByteArray? = null
