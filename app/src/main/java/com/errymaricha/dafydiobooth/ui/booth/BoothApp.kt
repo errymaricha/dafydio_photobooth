@@ -71,7 +71,12 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.Offset
 import androidx.core.content.ContextCompat
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import com.errymaricha.dafydiobooth.R
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -94,6 +99,7 @@ import com.errymaricha.dafydiobooth.ui.template.TemplatePreviewPageRedesign
 import java.io.File
 import android.util.Log
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private enum class BoothRoute(val route: String) {
     Splash("splash"),
@@ -504,6 +510,7 @@ private fun SplashScreen(actions: BoothActions) {
     val logoScale = remember { Animatable(0f) }
     val contentAlpha = remember { Animatable(0f) }
     val loadingProgress = remember { Animatable(0f) }
+    val shutterProgress = remember { Animatable(0f) }
 
     LaunchedEffect(Unit) {
         // Phase 1: Logo animates in (spring scale-in)
@@ -514,13 +521,25 @@ private fun SplashScreen(actions: BoothActions) {
                 stiffness = Spring.StiffnessLow
             )
         )
-        delay(1000)
+        delay(1200)
 
         // Phase 2: Shutter Capture Flash
-        // scale up quickly to signal click
-        logoScale.animateTo(1.18f, animationSpec = tween(120))
+        // scale logo down slightly while shutter appears
+        logoScale.animateTo(0.85f, animationSpec = tween(150))
         phase = 2
-        // trigger full screen white flash
+        
+        // Animate shutter blades closing & opening (0f to 1f)
+        val job = launch {
+            shutterProgress.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(800, easing = LinearEasing)
+            )
+        }
+        
+        delay(400) // wait until half-way (fully closed shutter)
+        
+        // Trigger White Flash!
+        flashAlpha = 1f
         animate(
             initialValue = 1f,
             targetValue = 0f,
@@ -528,14 +547,16 @@ private fun SplashScreen(actions: BoothActions) {
         ) { value, _ ->
             flashAlpha = value
         }
-        logoScale.snapTo(1f)
-        delay(300)
+        
+        job.join() // wait until shutter fully opens
+        delay(200)
 
         // Phase 3: Dafydio Booth Title + loading bar
         phase = 3
-        contentAlpha.animateTo(1f, animationSpec = tween(400))
-        loadingProgress.animateTo(1f, animationSpec = tween(1800, easing = LinearEasing))
-        delay(300)
+        logoScale.animateTo(1f, animationSpec = spring())
+        contentAlpha.animateTo(1f, animationSpec = tween(450))
+        loadingProgress.animateTo(1f, animationSpec = tween(2000, easing = LinearEasing))
+        delay(400)
 
         // Done: Enter dashboard
         actions.continueFromSplash()
@@ -560,29 +581,80 @@ private fun SplashScreen(actions: BoothActions) {
             verticalArrangement = Arrangement.spacedBy(24.dp),
             modifier = Modifier.padding(24.dp)
         ) {
-            // Camera Logo (Phase 1 & 2 & 3)
+            // Main Logo / Shutter animation area
             Box(
-                modifier = Modifier
-                    .graphicsLayer {
-                        scaleX = logoScale.value
-                        scaleY = logoScale.value
-                    }
-                    .size(110.dp)
-                    .clip(RoundedCornerShape(999.dp))
-                    .background(
-                        Brush.linearGradient(
-                            colors = listOf(Color(0xFF5B67FF), Color(0xFF8B5CF6))
-                        )
-                    )
-                    .border(2.dp, Color.White.copy(alpha = 0.3f), RoundedCornerShape(999.dp)),
+                modifier = Modifier.size(150.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Default.PhotoCamera,
-                    contentDescription = "Camera Shutter Logo",
-                    tint = Color.White,
-                    modifier = Modifier.size(54.dp)
-                )
+                if (phase == 1 || phase == 3) {
+                    Image(
+                        painter = painterResource(R.drawable.dafydio_logo),
+                        contentDescription = "Dafydio Logo",
+                        modifier = Modifier
+                            .graphicsLayer {
+                                scaleX = logoScale.value
+                                scaleY = logoScale.value
+                                alpha = if (phase == 3) contentAlpha.value else 1f
+                            }
+                            .size(140.dp)
+                    )
+                }
+                
+                if (phase == 2) {
+                    // Draw the custom camera shutter lens animation
+                    Canvas(
+                        modifier = Modifier
+                            .size(120.dp)
+                            .border(3.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(999.dp))
+                    ) {
+                        val center = Offset(size.width / 2f, size.height / 2f)
+                        val radius = size.width / 2f
+                        
+                        // Draw lens background
+                        drawCircle(
+                            color = Color(0xFF131524),
+                            radius = radius,
+                            center = center
+                        )
+                        
+                        // Calculate blade aperture closing
+                        val progress = shutterProgress.value
+                        val progressFactor = if (progress <= 0.5f) {
+                            progress * 2f // 0f to 1f
+                        } else {
+                            (1f - progress) * 2f // 1f to 0f
+                        }
+                        val innerRadius = radius * (1f - progressFactor)
+                        
+                        // Draw 6 shutter blades
+                        val bladeCount = 6
+                        for (i in 0 until bladeCount) {
+                            val angleDeg = i * (360f / bladeCount) + (progressFactor * 35f)
+                            val rad = Math.toRadians(angleDeg.toDouble())
+                            
+                            val startX = center.x + Math.cos(rad).toFloat() * radius
+                            val startY = center.y + Math.sin(rad).toFloat() * radius
+                            
+                            val endAngleRad = Math.toRadians((angleDeg + 60f).toDouble())
+                            val endX = center.x + Math.cos(endAngleRad).toFloat() * innerRadius
+                            val endY = center.y + Math.sin(endAngleRad).toFloat() * innerRadius
+                            
+                            drawLine(
+                                color = Color(0xFF5B67FF),
+                                start = Offset(startX, startY),
+                                end = Offset(endX, endY),
+                                strokeWidth = 5.dp.toPx()
+                            )
+                        }
+                        
+                        // Inner lens glass reflection
+                        drawCircle(
+                            color = Color.White.copy(alpha = 0.08f),
+                            radius = radius * 0.8f,
+                            center = Offset(center.x - radius * 0.15f, center.y - radius * 0.15f)
+                        )
+                    }
+                }
             }
 
             // Title & loading bar (Fade in during Phase 3)
