@@ -29,7 +29,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -92,16 +94,22 @@ fun CapturePreviewScreen(state: BoothUiState, actions: BoothActions) {
                     val isTablet = maxWidth >= 900.dp
                     if (isTablet) {
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(IntrinsicSize.Max),
                             horizontalArrangement = Arrangement.spacedBy(16.dp),
                         ) {
                             CapturePreviewCanvasCard(
                                 state = state,
-                                modifier = Modifier.weight(1.2f),
+                                modifier = Modifier
+                                    .weight(1.2f)
+                                    .fillMaxHeight(),
                             )
                             CapturePreviewInfoCard(
                                 state = state,
-                                modifier = Modifier.weight(0.8f),
+                                modifier = Modifier
+                                    .weight(0.8f)
+                                    .fillMaxHeight(),
                             )
                         }
                     } else {
