@@ -291,34 +291,56 @@ private fun CapturePreviewInfoCard(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Text("Quick Review (Overlay)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Canvas Preview",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1E2144)
+                )
+                Surface(
+                    shape = RoundedCornerShape(999.dp),
+                    color = Color(0xFF5B67FF).copy(alpha = 0.12f)
+                ) {
+                    Text(
+                        text = state.selectedTemplatePaperSize ?: "-",
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Color(0xFF5B67FF),
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
             Text(
                 text = "Desain akhir cetak dengan template overlay aktif. Pastikan posisi foto pas sebelum dilanjutkan.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Surface(shape = RoundedCornerShape(20.dp), color = Color.White.copy(alpha = 0.85f)) {
+            
+            if (
+                !state.selectedTemplatePreviewLocalPath.isNullOrBlank() ||
+                !state.selectedTemplateOverlayLocalPath.isNullOrBlank() ||
+                !state.selectedTemplatePreviewUrl.isNullOrBlank() ||
+                !state.selectedTemplateOverlayUrl.isNullOrBlank()
+            ) {
+                TemplateSurface(state)
+            } else {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(340.dp)
-                        .padding(10.dp),
+                        .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(20.dp)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    if (
-                        !state.selectedTemplatePreviewLocalPath.isNullOrBlank() ||
-                        !state.selectedTemplateOverlayLocalPath.isNullOrBlank() ||
-                        !state.selectedTemplatePreviewUrl.isNullOrBlank() ||
-                        !state.selectedTemplateOverlayUrl.isNullOrBlank()
-                    ) {
-                        TemplateSurface(state)
-                    } else {
-                        Text(
-                            text = "Overlay template belum tersedia",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                    Text(
+                        text = "Overlay template belum tersedia",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
             
