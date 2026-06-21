@@ -49,6 +49,13 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
@@ -65,6 +72,7 @@ fun AndroidCameraCapture(
     state: BoothUiState,
     onCaptured: (String) -> Unit,
     onCameraAvailabilityChanged: (Boolean, Boolean) -> Unit = { _, _ -> },
+    onCapturingStateChanged: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -211,62 +219,73 @@ fun AndroidCameraCapture(
                     }
                 }
             }
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 148.dp)
-                    .size(78.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = if (isCapturing) 0.45f else 0.9f))
-                    .border(3.dp, Color.White, CircleShape)
-                    .clickable(enabled = !isCapturing) {
-                    scope.launch {
-                        isCapturing = true
-                        captureError = null
-                        runCountdown(
-                            seconds = state.countdownSeconds,
-                            playAudio = state.countdownAudio,
-                            playTone = { countdownTone.startTone(ToneGenerator.TONE_PROP_BEEP, 160) },
-                        ) { remaining ->
-                            countdown = remaining
-                        }
-                        countdown = null
-                        if (state.shutterSound) {
-                            shutterClick.play(MediaActionSound.SHUTTER_CLICK)
-                        }
-                        imageCapture.captureToFile(
-                            context = context,
-                            onSuccess = { file ->
-                                isCapturing = false
-                                onCaptured(file.absolutePath)
+            AnimatedVisibility(
+                visible = !isCapturing,
+                enter = fadeIn() + scaleIn(initialScale = 0.8f),
+                exit = fadeOut() + scaleOut(targetScale = 0.8f),
+                modifier = Modifier.align(Alignment.Center)
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(80.dp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.9f))
+                            .border(3.dp, Color.White, CircleShape)
+                            .clickable(enabled = !isCapturing) {
+                                scope.launch {
+                                    isCapturing = true
+                                    onCapturingStateChanged(true)
+                                    captureError = null
+                                    runCountdown(
+                                        seconds = state.countdownSeconds,
+                                        playAudio = state.countdownAudio,
+                                        playTone = { countdownTone.startTone(ToneGenerator.TONE_PROP_BEEP, 160) },
+                                    ) { remaining ->
+                                        countdown = remaining
+                                    }
+                                    countdown = null
+                                    if (state.shutterSound) {
+                                        shutterClick.play(MediaActionSound.SHUTTER_CLICK)
+                                    }
+                                    imageCapture.captureToFile(
+                                        context = context,
+                                        onSuccess = { file ->
+                                            isCapturing = false
+                                            onCapturingStateChanged(false)
+                                            onCaptured(file.absolutePath)
+                                        },
+                                        onError = { message ->
+                                            isCapturing = false
+                                            onCapturingStateChanged(false)
+                                            captureError = message
+                                        },
+                                    )
+                                }
                             },
-                            onError = { message ->
-                                isCapturing = false
-                                captureError = message
-                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(60.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFE53935)),
                         )
                     }
-                },
-                contentAlignment = Alignment.Center,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(58.dp)
-                        .clip(CircleShape)
-                        .background(if (isCapturing) Color(0xFFB0B0B0) else Color(0xFFE53935)),
-                )
+                    Text(
+                        text = "Tap to capture",
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .background(Color.Black.copy(alpha = 0.5f), shape = RoundedCornerShape(12.dp))
+                            .padding(horizontal = 14.dp, vertical = 6.dp)
+                    )
+                }
             }
-            Text(
-                text = when {
-                    isCapturing && countdown != null -> "Preparing capture..."
-                    isCapturing -> "Capturing..."
-                    else -> "Tap to capture"
-                },
-                color = Color.White,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 116.dp),
-            )
         } else {
             Column(
                 modifier = Modifier

@@ -3,11 +3,14 @@ package com.errymaricha.dafydiobooth.ui.launch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -49,8 +52,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.BorderStroke
+import com.errymaricha.dafydiobooth.ui.booth.MockPrintStatus
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -1993,6 +2000,15 @@ fun CaptureFinishedScreen(
     onBackToWelcome: () -> Unit,
     onStartNewSession: () -> Unit,
     onExitToDashboard: () -> Unit = {},
+    capturedPhotos: List<String> = emptyList(),
+    onDownloadClick: (() -> Unit)? = null,
+    onPrintClick: (() -> Unit)? = null,
+    mockPrintStatus: MockPrintStatus = MockPrintStatus.Idle,
+    mockPrintMessage: String? = null,
+    printUsePhotoboothStation: Boolean = false,
+    isStationConnected: Boolean = false,
+    previewContent: @Composable (() -> Unit)? = null,
+    isQuickBooth: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val cloudDownloadUrl = "https://dafydio.com/$sessionCode"
@@ -2007,48 +2023,275 @@ fun CaptureFinishedScreen(
         if (isTablet) {
             Row(
                 modifier = Modifier.fillMaxSize(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(24.dp),
             ) {
-                LaunchSectionCard(
-                    title = "Ringkasan Sesi",
-                    modifier = Modifier.weight(0.78f),
+                // Left Column: 4x6 Portrait collage preview taking full height
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center
                 ) {
-                    LaunchStatusPills(
-                        "Event" to eventName,
-                        "Template" to template.name,
-                        "Status" to "Selesai",
-                    )
-                    Text(
-                        text = "${template.sizeLabel} • ${template.frameCount} frame",
-                        color = LaunchUiTokens.inkSoft,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                        repeat(template.frameCount.coerceAtMost(4)) { index ->
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .aspectRatio(2f / 3f), // 4x6 format
+                        shape = RoundedCornerShape(28.dp),
+                        color = Color.Black.copy(alpha = 0.05f),
+                        border = BorderStroke(1.dp, LaunchUiTokens.border),
+                    ) {
+                        if (previewContent != null) {
+                            previewContent()
+                        } else {
                             Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(110.dp)
-                                    .background(
-                                        Brush.verticalGradient(
-                                            colors = listOf(
-                                                template.accent.copy(alpha = 0.22f),
-                                                Color.White,
-                                            ),
-                                        ),
-                                        RoundedCornerShape(18.dp),
-                                    )
-                                    .border(1.dp, LaunchUiTokens.border, RoundedCornerShape(18.dp)),
-                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Text("Hasil ${index + 1}", color = LaunchUiTokens.inkSoft)
+                                Text("Preview hasil foto", color = LaunchUiTokens.inkSoft)
                             }
                         }
                     }
+                }
+
+                // Right Column: Scrollable controls and summaries
+                Column(
+                    modifier = Modifier
+                        .weight(1.2f)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    LaunchHeroCard(
+                        title = if (isQuickBooth) "Sesi Quick Booth selesai" else "Sesi foto selesai",
+                        subtitle = "Preview hasil sesi untuk event $eventName dengan template ${template.name}.",
+                        badge = "DONE",
+                        badgeAccent = LaunchUiTokens.success,
+                    )
+
+                    LaunchSectionCard(title = "Ringkasan Sesi") {
+                        LaunchStatusPills(
+                            "Event" to eventName,
+                            "Template" to template.name,
+                            "Status" to "Selesai",
+                        )
+                        Text(
+                            text = "${template.sizeLabel} • ${template.frameCount} frame",
+                            color = LaunchUiTokens.inkSoft,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                            repeat(template.frameCount.coerceAtMost(4)) { index ->
+                                val photoPath = capturedPhotos.getOrNull(index)
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(90.dp)
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(
+                                            Brush.verticalGradient(
+                                                colors = listOf(
+                                                    template.accent.copy(alpha = 0.22f),
+                                                    Color.White,
+                                                ),
+                                            ),
+                                        )
+                                        .border(1.dp, LaunchUiTokens.border, RoundedCornerShape(14.dp)),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    if (!photoPath.isNullOrBlank()) {
+                                        AsyncImage(
+                                            model = File(photoPath),
+                                            contentDescription = "Hasil ${index + 1}",
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    } else {
+                                        Text("Hasil ${index + 1}", color = LaunchUiTokens.inkSoft, fontSize = 11.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     CloudQrCard(
                         sessionCode = sessionCode,
                         cloudDownloadUrl = cloudDownloadUrl,
                     )
+                    
+                    if (onPrintClick != null || onDownloadClick != null) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            if (onDownloadClick != null) {
+                                OutlinedButton(
+                                    onClick = onDownloadClick,
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(14.dp),
+                                    border = BorderStroke(1.dp, LaunchUiTokens.primary.copy(alpha = 0.3f))
+                                ) {
+                                    Text("Download", color = LaunchUiTokens.primary, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                            if (onPrintClick != null) {
+                                val printing = mockPrintStatus == MockPrintStatus.Queued
+                                Button(
+                                    onClick = onPrintClick,
+                                    enabled = !printing,
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(14.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = LaunchUiTokens.purple)
+                                ) {
+                                    Text(
+                                        text = if (printing) "Printing..." else "Print Strip",
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                        
+                        Text(
+                            text = if (printUsePhotoboothStation && isStationConnected) {
+                                "Print dikirim ke Photobooth Station."
+                            } else {
+                                "Print memakai Android printer lokal."
+                            },
+                            color = LaunchUiTokens.inkSoft,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(horizontal = 4.dp)
+                        )
+                        
+                        if (!mockPrintMessage.isNullOrBlank()) {
+                            Text(
+                                text = mockPrintMessage,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = LaunchUiTokens.inkSoft,
+                                modifier = Modifier.padding(horizontal = 4.dp)
+                            )
+                        }
+                    }
+
+                    if (isQuickBooth) {
+                        LaunchPrimaryButton(
+                            text = "Kembali ke Dashboard",
+                            onClick = onExitToDashboard,
+                            enabled = true,
+                        )
+                    } else {
+                        LaunchSecondaryButton(
+                            text = "Kembali ke Welcome Screen",
+                            onClick = onBackToWelcome,
+                            enabled = true,
+                        )
+                        LaunchPrimaryButton(
+                            text = "Mulai Sesi Baru",
+                            onClick = onStartNewSession,
+                            enabled = true,
+                        )
+                    }
+                }
+            }
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                LaunchHeroCard(
+                    title = if (isQuickBooth) "Sesi Quick Booth selesai" else "Sesi foto selesai",
+                    subtitle = "Preview hasil sesi untuk event $eventName dengan template ${template.name}.",
+                    badge = "DONE",
+                    badgeAccent = LaunchUiTokens.success,
+                )
+                
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(2f / 3f), // Lock aspect ratio for 4x6 photostrip
+                    shape = RoundedCornerShape(24.dp),
+                    color = Color.Black.copy(alpha = 0.05f),
+                    border = BorderStroke(1.dp, LaunchUiTokens.border),
+                ) {
+                    if (previewContent != null) {
+                        previewContent()
+                    } else {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("Preview hasil foto", color = LaunchUiTokens.inkSoft)
+                        }
+                    }
+                }
+
+                CloudQrCard(
+                    sessionCode = sessionCode,
+                    cloudDownloadUrl = cloudDownloadUrl,
+                )
+                
+                if (onPrintClick != null || onDownloadClick != null) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        if (onDownloadClick != null) {
+                            OutlinedButton(
+                                onClick = onDownloadClick,
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(14.dp),
+                                border = BorderStroke(1.dp, LaunchUiTokens.primary.copy(alpha = 0.3f))
+                            ) {
+                                Text("Download", color = LaunchUiTokens.primary, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                        if (onPrintClick != null) {
+                            val printing = mockPrintStatus == MockPrintStatus.Queued
+                            Button(
+                                onClick = onPrintClick,
+                                enabled = !printing,
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = LaunchUiTokens.purple)
+                            ) {
+                                Text(
+                                    text = if (printing) "Printing..." else "Print Strip",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                    
+                    Text(
+                        text = if (printUsePhotoboothStation && isStationConnected) {
+                            "Print dikirim ke Photobooth Station."
+                        } else {
+                            "Print memakai Android printer lokal."
+                        },
+                        color = LaunchUiTokens.inkSoft,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(horizontal = 4.dp)
+                    )
+                    
+                    if (!mockPrintMessage.isNullOrBlank()) {
+                        Text(
+                            text = mockPrintMessage,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = LaunchUiTokens.inkSoft,
+                            modifier = Modifier.padding(horizontal = 4.dp)
+                        )
+                    }
+                }
+
+                if (isQuickBooth) {
+                    LaunchPrimaryButton(
+                        text = "Kembali ke Dashboard",
+                        onClick = onExitToDashboard,
+                        enabled = true,
+                    )
+                } else {
                     LaunchSecondaryButton(
                         text = "Kembali ke Welcome Screen",
                         onClick = onBackToWelcome,
@@ -2060,85 +2303,14 @@ fun CaptureFinishedScreen(
                         enabled = true,
                     )
                 }
-                Column(
-                    modifier = Modifier.weight(1.42f),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    LaunchHeroCard(
-                        title = "Sesi foto selesai",
-                        subtitle = "Preview hasil sesi untuk event $eventName dengan template ${template.name}.",
-                        badge = "DONE",
-                        badgeAccent = LaunchUiTokens.success,
-                    )
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                            .background(
-                                Brush.verticalGradient(
-                                    colors = listOf(
-                                        template.accent.copy(alpha = 0.20f),
-                                        Color.White,
-                                    ),
-                                ),
-                                RoundedCornerShape(28.dp),
-                            )
-                            .border(1.dp, LaunchUiTokens.border, RoundedCornerShape(28.dp)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text("Preview hasil foto", color = LaunchUiTokens.inkSoft, style = MaterialTheme.typography.titleMedium)
-                    }
-                }
-            }
-        } else {
-            Column(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(18.dp),
-            ) {
-                LaunchHeroCard(
-                    title = "Sesi foto selesai",
-                    subtitle = "Preview hasil sesi untuk event $eventName dengan template ${template.name}.",
-                    badge = "DONE",
-                    badgeAccent = LaunchUiTokens.success,
-                )
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    template.accent.copy(alpha = 0.20f),
-                                    Color.White,
-                                ),
-                            ),
-                            RoundedCornerShape(28.dp),
-                        )
-                        .border(1.dp, LaunchUiTokens.border, RoundedCornerShape(28.dp)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text("Preview hasil foto", color = LaunchUiTokens.inkSoft, style = MaterialTheme.typography.titleMedium)
-                }
-                CloudQrCard(
-                    sessionCode = sessionCode,
-                    cloudDownloadUrl = cloudDownloadUrl,
-                )
-                LaunchSecondaryButton(
-                    text = "Kembali ke Welcome Screen",
-                    onClick = onBackToWelcome,
-                    enabled = true,
-                )
-                LaunchPrimaryButton(
-                    text = "Mulai Sesi Baru",
-                    onClick = onStartNewSession,
-                    enabled = true,
-                )
             }
         }
-        KioskExitOverlay(
-            exitCode = kioskExitCode,
-            onAuthorizedExit = onExitToDashboard,
-        )
+        if (!isQuickBooth) {
+            KioskExitOverlay(
+                exitCode = kioskExitCode,
+                onAuthorizedExit = onExitToDashboard,
+            )
+        }
     }
 }
 

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Latar belakang warna gelap sesuai branding -->
+    <item android:drawable="@color/ic_launcher_background" />
+
+    <!-- Logo launcher di tengah-tengah layar -->
+    <item
+        android:drawable="@mipmap/ic_launcher"
+        android:gravity="center" />
+</layer-list>

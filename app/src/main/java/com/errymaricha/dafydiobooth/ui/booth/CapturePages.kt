@@ -53,6 +53,17 @@ fun FinishPageRedesign(state: BoothUiState, actions: BoothActions) {
         onBackToWelcome = actions.newSession,
         onStartNewSession = actions.newSession,
         onExitToDashboard = actions.openDashboard,
+        capturedPhotos = state.capturedPhotosBySlot.entries.sortedBy { it.key }.map { it.value },
+        onDownloadClick = actions.downloadResult,
+        onPrintClick = actions.triggerMockPrint,
+        mockPrintStatus = state.mockPrintStatus,
+        mockPrintMessage = state.mockPrintMessage,
+        printUsePhotoboothStation = state.printUsePhotoboothStation,
+        isStationConnected = state.isStationConnected,
+        isQuickBooth = state.localOnlySession,
+        previewContent = {
+            TemplateSurface(state = state)
+        }
     )
 }
 

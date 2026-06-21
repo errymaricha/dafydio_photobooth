@@ -527,13 +527,21 @@ fun ScreenFrame(
     title: String,
     state: BoothUiState,
     actions: BoothActions,
+    scrollable: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Column(
-        modifier = Modifier
+    val modifier = if (scrollable) {
+        Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(24.dp),
+            .padding(24.dp)
+    } else {
+        Modifier
+            .fillMaxSize()
+            .padding(24.dp)
+    }
+    Column(
+        modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
