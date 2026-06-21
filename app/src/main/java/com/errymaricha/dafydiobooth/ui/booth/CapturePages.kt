@@ -277,15 +277,15 @@ private fun CapturePreviewInfoCard(
     Card(
         modifier = modifier,
         shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = Color(0xF5FFFFFF)),
         elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(
-                    Brush.linearGradient(
-                        colors = listOf(Color(0xFFEFF3FF), Color(0xFFFFF3F9)),
+                    Brush.verticalGradient(
+                        colors = listOf(Color(0xFFF4F7FF), Color.White, Color(0xFFFFF4F9)),
                     ),
                 )
                 .padding(16.dp),
@@ -321,28 +321,7 @@ private fun CapturePreviewInfoCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             
-            if (
-                !state.selectedTemplatePreviewLocalPath.isNullOrBlank() ||
-                !state.selectedTemplateOverlayLocalPath.isNullOrBlank() ||
-                !state.selectedTemplatePreviewUrl.isNullOrBlank() ||
-                !state.selectedTemplateOverlayUrl.isNullOrBlank()
-            ) {
-                TemplateSurface(state)
-            } else {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(340.dp)
-                        .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(20.dp)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = "Overlay template belum tersedia",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
+            TemplateSurface(state)
             
             Spacer(modifier = Modifier.height(4.dp))
             
