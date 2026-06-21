@@ -833,6 +833,13 @@ fun hasLegacyStorageWritePermission(context: Context): Boolean {
 @Composable
 fun TemplateSurface(state: BoothUiState) {
     val context = LocalContext.current
+    val orderedSlots = remember(state.selectedTemplateSlots) {
+        state.selectedTemplateSlots.map { it.sourceSlotIndex }.distinct().sorted()
+    }
+    val currentActiveSlot = remember(orderedSlots, state.nextCaptureIndex) {
+        val index = (state.nextCaptureIndex - 1).coerceIn(0, orderedSlots.lastIndex)
+        if (orderedSlots.isNotEmpty()) orderedSlots[index] else -1
+    }
     val localPreview = state.selectedTemplatePreviewLocalPath
         ?.takeIf { it.isNotBlank() }
         ?.let { File(it) }
@@ -887,7 +894,7 @@ fun TemplateSurface(state: BoothUiState) {
                 val h = frameHeight * (slot.height.toFloat() / canvasHeight.toFloat())
                 val r = frameWidth * (slot.borderRadius.toFloat() / canvasWidth.toFloat())
                 val photoPath = state.capturedPhotosBySlot[slot.sourceSlotIndex]
-                    ?: if (slot.sourceSlotIndex == state.nextCaptureIndex) state.capturedPhotoPath else null
+                    ?: if (slot.sourceSlotIndex == currentActiveSlot) state.capturedPhotoPath else null
                 if (photoPath != null) {
                     AsyncImage(
                         model = File(photoPath),
