@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,6 +13,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.fillMaxSize
@@ -58,6 +61,16 @@ import androidx.compose.ui.unit.dp
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.core.content.ContextCompat
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -485,38 +498,150 @@ private fun SplashPageRedesign(actions: BoothActions) {
 
 @Composable
 private fun SplashScreen(actions: BoothActions) {
+    var phase by remember { mutableStateOf(1) } // 1: Logo scale-in, 2: Camera flash, 3: Title and loading progress
+    var flashAlpha by remember { mutableStateOf(0f) }
+    
+    val logoScale = remember { Animatable(0f) }
+    val contentAlpha = remember { Animatable(0f) }
+    val loadingProgress = remember { Animatable(0f) }
+
     LaunchedEffect(Unit) {
-        delay(900)
+        // Phase 1: Logo animates in (spring scale-in)
+        logoScale.animateTo(
+            targetValue = 1f,
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioMediumBouncy,
+                stiffness = Spring.StiffnessLow
+            )
+        )
+        delay(1000)
+
+        // Phase 2: Shutter Capture Flash
+        // scale up quickly to signal click
+        logoScale.animateTo(1.18f, animationSpec = tween(120))
+        phase = 2
+        // trigger full screen white flash
+        animate(
+            initialValue = 1f,
+            targetValue = 0f,
+            animationSpec = tween(450)
+        ) { value, _ ->
+            flashAlpha = value
+        }
+        logoScale.snapTo(1f)
+        delay(300)
+
+        // Phase 3: Dafydio Booth Title + loading bar
+        phase = 3
+        contentAlpha.animateTo(1f, animationSpec = tween(400))
+        loadingProgress.animateTo(1f, animationSpec = tween(1800, easing = LinearEasing))
+        delay(300)
+
+        // Done: Enter dashboard
         actions.continueFromSplash()
     }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        Color(0xFFF5F8FF),
-                        Color(0xFFFFF2F8),
-                        Color.White,
+                        Color(0xFF0F1123),
+                        Color(0xFF07080F),
                     ),
                 ),
             ),
         contentAlignment = Alignment.Center,
     ) {
-        Card(
-            shape = RoundedCornerShape(28.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.9f)),
-            elevation = CardDefaults.cardElevation(defaultElevation = 10.dp),
+        // Main Container for content
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(24.dp),
+            modifier = Modifier.padding(24.dp)
         ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 28.dp, vertical = 24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+            // Camera Logo (Phase 1 & 2 & 3)
+            Box(
+                modifier = Modifier
+                    .graphicsLayer {
+                        scaleX = logoScale.value
+                        scaleY = logoScale.value
+                    }
+                    .size(110.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(
+                        Brush.linearGradient(
+                            colors = listOf(Color(0xFF5B67FF), Color(0xFF8B5CF6))
+                        )
+                    )
+                    .border(2.dp, Color.White.copy(alpha = 0.3f), RoundedCornerShape(999.dp)),
+                contentAlignment = Alignment.Center
             ) {
-                Text("Dafydio Booth", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
-                Text("Photobooth station", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                CircularProgressIndicator(color = Color(0xFF5B67FF))
+                Icon(
+                    imageVector = Icons.Default.PhotoCamera,
+                    contentDescription = "Camera Shutter Logo",
+                    tint = Color.White,
+                    modifier = Modifier.size(54.dp)
+                )
             }
+
+            // Title & loading bar (Fade in during Phase 3)
+            if (phase >= 3) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.graphicsLayer {
+                        alpha = contentAlpha.value
+                    }
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "Dafydio Booth",
+                            style = MaterialTheme.typography.headlineLarge,
+                            fontWeight = FontWeight.Black,
+                            color = Color.White
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Premium Photobooth Station",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White.copy(alpha = 0.6f),
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Loading progress bar
+                    Box(
+                        modifier = Modifier
+                            .width(200.dp)
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(Color.White.copy(alpha = 0.15f))
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .fillMaxWidth(loadingProgress.value)
+                                .background(
+                                    Brush.horizontalGradient(
+                                        colors = listOf(Color(0xFF5B67FF), Color(0xFF8B5CF6))
+                                    )
+                                )
+                        )
+                    }
+                }
+            }
+        }
+
+        // Camera Shutter white flash overlay (Phase 2)
+        if (phase == 2 && flashAlpha > 0f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.White.copy(alpha = flashAlpha))
+            )
         }
     }
 }
