@@ -506,7 +506,7 @@ private fun SplashPageRedesign(actions: BoothActions) {
 
 @Composable
 private fun SplashScreen(actions: BoothActions) {
-    var phase by remember { mutableStateOf(1) } // 1: Logo scale-in, 2: Camera flash, 3: Title and loading progress
+    var phase by remember { mutableStateOf(2) } // 2: Camera flash shutter, 3: Title, logo and loading progress
     var flashAlpha by remember { mutableStateOf(0f) }
     
     val logoScale = remember { Animatable(0f) }
@@ -515,21 +515,7 @@ private fun SplashScreen(actions: BoothActions) {
     val shutterProgress = remember { Animatable(0f) }
 
     LaunchedEffect(Unit) {
-        // Phase 1: Logo animates in (spring scale-in)
-        logoScale.animateTo(
-            targetValue = 1f,
-            animationSpec = spring(
-                dampingRatio = Spring.DampingRatioMediumBouncy,
-                stiffness = Spring.StiffnessLow
-            )
-        )
-        delay(1200)
-
         // Phase 2: Shutter Capture Flash
-        // scale logo down slightly while shutter appears
-        logoScale.animateTo(0.85f, animationSpec = tween(150))
-        phase = 2
-        
         // Animate shutter blades closing & opening (0f to 1f)
         val job = launch {
             shutterProgress.animateTo(
