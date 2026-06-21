@@ -583,7 +583,7 @@ private fun SplashScreen(actions: BoothActions) {
         ) {
             // Main Logo / Shutter animation area
             Box(
-                modifier = Modifier.size(280.dp),
+                modifier = Modifier.size(540.dp),
                 contentAlignment = Alignment.Center
             ) {
                 if (phase == 1 || phase == 3) {
@@ -604,8 +604,8 @@ private fun SplashScreen(actions: BoothActions) {
                     // Draw the custom camera shutter lens animation
                     Canvas(
                         modifier = Modifier
-                            .size(240.dp)
-                            .border(5.dp, Color.White.copy(alpha = 0.6f), RoundedCornerShape(999.dp))
+                            .size(500.dp)
+                            .border(8.dp, Color.White.copy(alpha = 0.6f), RoundedCornerShape(999.dp))
                     ) {
                         val center = Offset(size.width / 2f, size.height / 2f)
                         val radius = size.width / 2f
@@ -643,7 +643,7 @@ private fun SplashScreen(actions: BoothActions) {
                                 color = Color(0xFF5B67FF),
                                 start = Offset(startX, startY),
                                 end = Offset(endX, endY),
-                                strokeWidth = 5.dp.toPx()
+                                strokeWidth = 8.dp.toPx()
                             )
                         }
                         
