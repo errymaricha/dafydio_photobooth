@@ -8,6 +8,7 @@ import com.errymaricha.dafydiobooth.data.api.CreateSessionRequest
 import com.errymaricha.dafydiobooth.data.api.EditJobItemRequest
 import com.errymaricha.dafydiobooth.data.api.PaymentQuoteRequest
 import com.errymaricha.dafydiobooth.data.api.PhotoboothApi
+import com.errymaricha.dafydiobooth.data.api.OpenManualSessionRequest
 import com.errymaricha.dafydiobooth.data.api.RenderEditJobRequest
 import com.errymaricha.dafydiobooth.data.api.TemplateDto
 import com.errymaricha.dafydiobooth.data.api.VerifyVoucherRequest
@@ -106,6 +107,25 @@ class ApiPhotoboothRepository(
         api.paymentCheck(sessionId).toDomain()
     }
 
+    override suspend fun openManualSession(
+        eventId: String,
+        customerWhatsapp: String?,
+        voucherCode: String,
+        paymentMethod: String,
+        additionalPrintCount: Int,
+    ): BoothResult<BoothSession> = safeApiCall {
+        api.openSession(
+            bearerToken = "",
+            request = OpenManualSessionRequest(
+                eventId = eventId.ifBlank { null },
+                customerWhatsapp = customerWhatsapp?.ifBlank { null } ?: "",
+                voucherCode = voucherCode.ifBlank { null },
+                paymentMethod = paymentMethod.ifBlank { "manual" },
+                additionalPrintCount = additionalPrintCount.coerceAtLeast(0),
+            ),
+        ).toDomain()
+    }
+
     override suspend fun confirmPayment(
         deviceId: String,
         sessionId: String,
@@ -126,9 +146,12 @@ class ApiPhotoboothRepository(
                 sessionCode = it.sessionCode,
                 customerId = it.customerId,
                 paymentStatus = it.paymentStatus,
+                reviewStatus = null,
+                approvalStatus = null,
                 canUpload = it.canUpload ?: it.unlockPhoto ?: it.paymentRequired == false,
                 paymentRequired = it.paymentRequired ?: it.paymentStatus != "paid",
                 unlockPhoto = it.unlockPhoto ?: it.paymentRequired == false,
+                rejectionReason = null,
             )
         }
     }

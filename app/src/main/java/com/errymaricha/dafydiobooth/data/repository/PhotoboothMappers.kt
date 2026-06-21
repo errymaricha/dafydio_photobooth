@@ -55,9 +55,12 @@ fun PaymentCheckResponse.toDomain() = PaymentStatus(
     sessionCode = sessionCode,
     customerId = customerId,
     paymentStatus = paymentStatus,
+    reviewStatus = reviewStatus ?: manualReviewStatus,
+    approvalStatus = approvalStatus ?: paymentApprovalStatus,
     canUpload = canUpload == true || paymentUnlocked == true || unlockPhoto == true,
     paymentRequired = paymentRequired ?: paymentStatus != "paid",
     unlockPhoto = unlockPhoto == true || paymentUnlocked == true,
+    rejectionReason = rejectReason ?: rejectionReason ?: reason ?: reviewNotes ?: notes,
 )
 
 private val mapperJson = Json { ignoreUnknownKeys = true }

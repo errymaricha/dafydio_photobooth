@@ -38,6 +38,15 @@ class PrepareLaunchUseCase(
     }
 }
 
+class SyncLaunchPricingUseCase(
+    private val repository: LaunchRepository,
+) {
+    suspend operator fun invoke(token: String): LaunchPricing {
+        require(token.isNotBlank()) { "Token station belum tersedia" }
+        return repository.syncPricing(token)
+    }
+}
+
 class OpenManualSessionUseCase(
     private val repository: LaunchRepository,
 ) {
@@ -182,6 +191,7 @@ class CheckLaunchPaymentUseCase(
 
 data class LaunchUseCases(
     val prepareLaunch: PrepareLaunchUseCase,
+    val syncLaunchPricing: SyncLaunchPricingUseCase,
     val listLaunchEvents: ListLaunchEventsUseCase,
     val createLaunchEvent: CreateLaunchEventUseCase,
     val updateLaunchEvent: UpdateLaunchEventUseCase,

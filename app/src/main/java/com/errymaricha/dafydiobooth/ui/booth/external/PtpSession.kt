@@ -71,17 +71,45 @@ class PtpSession(
     fun triggerShutter(): Boolean {
         synchronized(commandLock) {
             if (!openSession()) return false
-            val half = sendCommand(PtpPacket.OC_EOS_REMOTE_RELEASE_ON, intArrayOf(1, 0))
-            if (half != PtpPacket.RC_OK) {
+            sendCommand(PtpPacket.OC_EOS_SET_REMOTE_MODE, intArrayOf(1))
+            sendCommand(PtpPacket.OC_EOS_SET_EVENT_MODE, intArrayOf(1))
+            sendCommand(PtpPacket.OC_EOS_KEEP_DEVICE_ON)
+
+            fun releaseButtons() {
+                sendCommand(PtpPacket.OC_EOS_REMOTE_RELEASE_OFF, intArrayOf(2))
                 sendCommand(PtpPacket.OC_EOS_REMOTE_RELEASE_OFF, intArrayOf(1))
-                return false
             }
-            // Give AF a brief settle window before full press.
-            Thread.sleep(180)
-            val full = sendCommand(PtpPacket.OC_EOS_REMOTE_RELEASE_ON, intArrayOf(2, 0))
-            sendCommand(PtpPacket.OC_EOS_REMOTE_RELEASE_OFF, intArrayOf(2))
-            sendCommand(PtpPacket.OC_EOS_REMOTE_RELEASE_OFF, intArrayOf(1))
-            return full == PtpPacket.RC_OK
+
+            // Strategy 1: half-press then full-press
+            val half = sendCommand(PtpPacket.OC_EOS_REMOTE_RELEASE_ON, intArrayOf(1, 0))
+            if (half == PtpPacket.RC_OK) {
+                Thread.sleep(220)
+                val full = sendCommand(PtpPacket.OC_EOS_REMOTE_RELEASE_ON, intArrayOf(2, 0))
+                releaseButtons()
+                if (full == PtpPacket.RC_OK) return true
+            } else {
+                releaseButtons()
+            }
+
+            Thread.sleep(140)
+
+            // Strategy 2: direct full-press without AF half-press
+            val fullDirect = sendCommand(PtpPacket.OC_EOS_REMOTE_RELEASE_ON, intArrayOf(2, 0))
+            releaseButtons()
+            if (fullDirect == PtpPacket.RC_OK) return true
+
+            Thread.sleep(140)
+
+            // Strategy 3: direct full-press variant (some bodies prefer alt second param)
+            val fullDirectVariant = sendCommand(PtpPacket.OC_EOS_REMOTE_RELEASE_ON, intArrayOf(2, 1))
+            releaseButtons()
+            if (fullDirectVariant == PtpPacket.RC_OK) return true
+
+            Thread.sleep(140)
+
+            // Strategy 4: fallback standard PTP capture
+            val initiate = sendCommand(PtpPacket.OC_INITIATE_CAPTURE, intArrayOf(-1, 0))
+            return initiate == PtpPacket.RC_OK
         }
     }
 
@@ -154,10 +182,25 @@ class PtpSession(
         synchronized(commandLock) {
             if (!liveViewStarted) return true
             val ok = setEosIntProperty(PtpPacket.DPC_EOS_EVF_OUTPUT_DEVICE, 0)
+            if (!ok) {
+                // Some bodies can be busy and reject EVF off; force-reset internal state
+                // so capture path can continue and EVF can be re-initialized later.
+                Log.d("PtpSession", "stopLiveView rejected by device, forcing local EVF reset")
+            }
             liveViewStarted = false
             evfMissCount = 0
             Log.d("PtpSession", "stopLiveView ok=$ok")
             return ok
+        }
+    }
+
+    fun prepareForCapture(): Boolean {
+        synchronized(commandLock) {
+            if (!openSession()) return false
+            val stopped = stopLiveView()
+            // Give camera a short settle window before sending shutter command.
+            Thread.sleep(180)
+            return stopped
         }
     }
 
@@ -170,7 +213,7 @@ class PtpSession(
         )
         if (data == null) {
             evfMissCount++
-            if (evfMissCount >= 4) {
+            if (evfMissCount >= 8) {
                 Log.d("PtpSession", "evf no-data threshold reached, retry live view init")
                 liveViewStarted = false
                 evfMissCount = 0

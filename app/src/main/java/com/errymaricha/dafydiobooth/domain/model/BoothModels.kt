@@ -64,9 +64,12 @@ data class PaymentStatus(
     val sessionCode: String?,
     val customerId: String? = null,
     val paymentStatus: String,
+    val reviewStatus: String? = null,
+    val approvalStatus: String? = null,
     val canUpload: Boolean,
     val paymentRequired: Boolean,
     val unlockPhoto: Boolean,
+    val rejectionReason: String? = null,
 )
 
 sealed interface BoothError {

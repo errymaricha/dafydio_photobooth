@@ -1,12 +1,19 @@
 package com.errymaricha.dafydiobooth.ui.booth
 
 import android.content.Context
+import android.content.BroadcastReceiver
+import android.content.Intent
+import android.content.IntentFilter
+import android.hardware.usb.UsbDevice
+import android.hardware.usb.UsbManager
 import android.util.Log
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import android.graphics.BitmapFactory
 import android.os.Build
 import com.errymaricha.dafydiobooth.data.api.TemplateSlotDto
+import com.errymaricha.dafydiobooth.DafydioApplication
 import com.errymaricha.dafydiobooth.data.local.DeviceConfig
 import com.errymaricha.dafydiobooth.data.local.DeviceConfigStore
 import com.errymaricha.dafydiobooth.data.local.StoredTemplate
@@ -14,6 +21,7 @@ import com.errymaricha.dafydiobooth.data.local.TemplateAssetStore
 import com.errymaricha.dafydiobooth.data.local.TemplateSqliteStore
 import com.errymaricha.dafydiobooth.data.session.SessionStateManager
 import com.errymaricha.dafydiobooth.data.station.StationConnectionChecker
+import com.errymaricha.dafydiobooth.data.station.toStationBaseUrl
 import com.errymaricha.dafydiobooth.station.model.HeartbeatCapabilities
 import com.errymaricha.dafydiobooth.station.model.HeartbeatRequest
 import com.errymaricha.dafydiobooth.station.local.HeartbeatStatus
@@ -21,6 +29,8 @@ import com.errymaricha.dafydiobooth.station.network.AppResult
 import com.errymaricha.dafydiobooth.station.repository.DeviceRepository
 import com.errymaricha.dafydiobooth.station.local.HeartbeatStatusStore
 import com.errymaricha.dafydiobooth.station.security.TokenStore
+import com.errymaricha.dafydiobooth.station.worker.HeartbeatWorker
+import com.errymaricha.dafydiobooth.station.worker.OfflineQueueWorker
 import com.errymaricha.dafydiobooth.ui.booth.external.CanonUsbController
 import com.errymaricha.dafydiobooth.ui.booth.external.ExternalCaptureStore
 import com.errymaricha.dafydiobooth.ui.booth.external.PtpSession
@@ -29,6 +39,7 @@ import com.errymaricha.dafydiobooth.domain.model.BoothError
 import com.errymaricha.dafydiobooth.domain.model.BoothResult
 import com.errymaricha.dafydiobooth.domain.model.BoothSession
 import com.errymaricha.dafydiobooth.domain.model.LaunchSession
+import com.errymaricha.dafydiobooth.domain.model.isRejectedPaymentStatus
 import com.errymaricha.dafydiobooth.domain.usecase.PhotoboothUseCases
 import java.io.File
 import java.net.URI
@@ -61,6 +72,13 @@ class BoothViewModel(
     private val stationTokenStore: TokenStore,
     private val stationDeviceRepository: DeviceRepository,
 ) : ViewModel() {
+    private companion object {
+        const val ACTION_USB_PERMISSION = "com.errymaricha.dafydiobooth.USB_PERMISSION"
+        const val CANON_VENDOR_ID = 0x04A9
+    }
+
+    private val appContext = appContext.applicationContext
+    private val stationBootstrap = (this.appContext as DafydioApplication).stationBootstrap
     private val _state = MutableStateFlow(BoothUiState())
     val state: StateFlow<BoothUiState> = _state.asStateFlow()
     private val json = Json { ignoreUnknownKeys = true }
@@ -71,21 +89,42 @@ class BoothViewModel(
     private val externalCaptureStore = ExternalCaptureStore(appContext)
     private var canonPtpSession: PtpSession? = null
     private var externalPreviewJob: Job? = null
+    private var externalCaptureJob: Job? = null
+    private var externalConnectInProgress: Boolean = false
     private var lastPreviewUiUpdateAt: Long = 0L
+    private var lastUsbAttachHandledAt: Long = 0L
+    private var usbReceiverRegistered = false
+    private val usbReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                ACTION_USB_PERMISSION -> handleUsbPermissionResult(intent)
+                UsbManager.ACTION_USB_DEVICE_ATTACHED -> handleUsbAttached(intent)
+                UsbManager.ACTION_USB_DEVICE_DETACHED -> handleUsbDetached(intent)
+            }
+        }
+    }
 
     init {
+        registerUsbReceiver()
         viewModelScope.launch {
             configStore.config.collect { config ->
+                stationBootstrap.setStationBaseUrl(config.stationIp.toStationBaseUrl())
                 sessionStateManager.updateConnection(
                     stationIp = config.stationIp,
                     deviceId = config.deviceId,
                     apiKey = config.token,
                     authToken = config.authToken,
+                    isStationReachable = state.value.isStationReachable,
                 )
-                _state.update {
-                    it.copy(
+                _state.update { current ->
+                    // welcomeBgUri hanya di-update dari DataStore jika event ID-nya cocok
+                    // dengan state saat ini, untuk menghindari overwrite saat ganti event
+                    val bgUri = if (config.launchSelectedEventId == current.launchSelectedEventId) config.welcomeBgUri else current.welcomeBgUri
+                    val bgIsVideo = if (config.launchSelectedEventId == current.launchSelectedEventId) config.welcomeBgIsVideo else current.welcomeBgIsVideo
+                    current.copy(
                         cameraSource = config.cameraSource.toEnum(CameraSource.AndroidDefault),
                         externalCameraStatus = config.externalCameraStatus.toEnum(ExternalCameraStatus.Disconnected),
+                        externalPreviewFps = config.externalPreviewFps.coerceIn(10, 24),
                         customerId = config.customerId,
                         customerWhatsapp = config.customerWhatsapp,
                         launchEventName = config.launchEventName,
@@ -96,6 +135,7 @@ class BoothViewModel(
                         voucherType = config.voucherType,
                         sessionType = config.sessionType,
                         paymentMethod = config.paymentMethod,
+                        kioskExitCode = config.kioskExitCode,
                         mirrorLiveView = config.mirrorLiveView,
                         mirrorCapture = config.mirrorCapture,
                         imageQuality = config.imageQuality.toEnum(ImageQuality.High),
@@ -107,6 +147,8 @@ class BoothViewModel(
                         shutterSound = config.shutterSound,
                         defaultPrinting = config.defaultPrinting,
                         printUsePhotoboothStation = config.printUsePhotoboothStation,
+                        welcomeBgUri = bgUri,
+                        welcomeBgIsVideo = bgIsVideo,
                     )
                 }
             }
@@ -119,7 +161,7 @@ class BoothViewModel(
                         deviceId = session.deviceId,
                         token = session.apiKey,
                         authToken = session.authToken,
-                        isStationConnected = session.isStationConnected,
+                        isStationConnected = session.isStationAuthenticated,
                         customerId = session.customerId.ifBlank { it.customerId },
                         customerWhatsapp = session.customerWhatsapp.ifBlank { it.customerWhatsapp },
                         launchSelectedEventId = session.selectedEventId.ifBlank { it.launchSelectedEventId },
@@ -159,7 +201,7 @@ class BoothViewModel(
                             templateCode = stored.templateCode,
                             category = stored.category,
                             paperSize = stored.paperSize,
-                            thumbnailUrl = stored.thumbnailLocalPath,
+                            thumbnailUrl = resolveLocalTemplateThumbnailPath(stored),
                             thumbnailReady = readiness.thumbnailReady,
                             previewReady = readiness.previewReady,
                             overlayReady = readiness.overlayReady,
@@ -197,8 +239,11 @@ class BoothViewModel(
                         heartbeatLastAt = hb.lastHeartbeatAt,
                         heartbeatLastSyncAt = hb.lastSyncAt,
                         heartbeatLastResult = hb.lastResult,
+                        heartbeatLastSuccessAt = hb.lastSuccessAt,
+                        consecutiveHeartbeatFailures = hb.consecutiveFailures,
                     )
                 }
+                sessionStateManager.updateReachability(_state.value.isStationReachable)
             }
         }
     }
@@ -306,6 +351,7 @@ class BoothViewModel(
             metrics = emptyMap(),
             lastSyncAt = now,
         )
+        val previousHeartbeat = heartbeatStatusStore.snapshot()
         when (val result = stationDeviceRepository.sendHeartbeat(request)) {
             is AppResult.Success -> {
                 heartbeatStatusStore.save(
@@ -317,6 +363,8 @@ class BoothViewModel(
                         lastHeartbeatAt = now,
                         lastSyncAt = now,
                         lastResult = "success",
+                        lastSuccessAt = now,
+                        consecutiveFailures = 0,
                     ),
                 )
                 _state.update { it.copy(eventStatusMessage = "Heartbeat sent.", errorMessage = null) }
@@ -331,6 +379,8 @@ class BoothViewModel(
                         lastHeartbeatAt = now,
                         lastSyncAt = now,
                         lastResult = "failed",
+                        lastSuccessAt = previousHeartbeat.lastSuccessAt,
+                        consecutiveFailures = previousHeartbeat.consecutiveFailures + 1,
                     ),
                 )
                 _state.update { it.copy(errorMessage = "Heartbeat gagal: ${result.error}") }
@@ -344,6 +394,8 @@ class BoothViewModel(
     }
 
     fun disconnectStation() = updateAndPersistConfig {
+        HeartbeatWorker.cancel(appContext)
+        OfflineQueueWorker.cancel(appContext)
         stationTokenStore.clear()
         sessionStateManager.clearSession()
         sessionStateManager.updateConnection(
@@ -351,6 +403,7 @@ class BoothViewModel(
             deviceId = it.deviceId,
             apiKey = it.token,
             authToken = "",
+            isStationReachable = false,
         )
         buildDisconnectedState(it)
     }
@@ -361,6 +414,7 @@ class BoothViewModel(
             _state.update { it.copy(errorMessage = "Connect Photobooth Station dulu") }
             return@launchRequest
         }
+        val stationBaseUrl = current.stationIp.toStationBaseUrl()
         when (val result = useCases.refreshTemplates(current.authToken)) {
             is BoothResult.Success -> {
                 val existingById = cachedTemplates.associateBy { it.templateId }
@@ -372,21 +426,21 @@ class BoothViewModel(
                     val thumbnailLocalPath = templateAssetStore.cacheThumbnail(
                         templateId = it.templateId,
                         thumbnailUrl = it.thumbnailUrl,
-                        stationBaseUrl = current.stationIp,
+                        stationBaseUrl = stationBaseUrl,
                         authToken = current.authToken,
                         forceRefresh = thumbnailChanged,
                     ) ?: existing?.thumbnailLocalPath
                     val previewLocalPath = templateAssetStore.cachePreview(
                         templateId = it.templateId,
                         previewUrl = it.previewUrl,
-                        stationBaseUrl = current.stationIp,
+                        stationBaseUrl = stationBaseUrl,
                         authToken = current.authToken,
                         forceRefresh = previewChanged,
                     ) ?: thumbnailLocalPath ?: existing?.previewLocalPath
                     val overlayLocalPath = templateAssetStore.cacheOverlay(
                         templateId = it.templateId,
                         overlayUrl = it.overlayUrl,
-                        stationBaseUrl = current.stationIp,
+                        stationBaseUrl = stationBaseUrl,
                         authToken = current.authToken,
                         forceRefresh = overlayChanged,
                     ) ?: existing?.overlayLocalPath
@@ -424,7 +478,7 @@ class BoothViewModel(
                             templateAssetStore.cacheThumbnail(
                                 templateId = source.templateId,
                                 thumbnailUrl = source.thumbnailUrl,
-                                stationBaseUrl = current.stationIp,
+                                stationBaseUrl = stationBaseUrl,
                                 authToken = current.authToken,
                             ) ?: stored.thumbnailLocalPath
                         }
@@ -434,7 +488,7 @@ class BoothViewModel(
                             templateAssetStore.cachePreview(
                                 templateId = source.templateId,
                                 previewUrl = source.previewUrl,
-                                stationBaseUrl = current.stationIp,
+                                stationBaseUrl = stationBaseUrl,
                                 authToken = current.authToken,
                             ) ?: stored.thumbnailLocalPath ?: stored.previewLocalPath
                         }
@@ -444,7 +498,7 @@ class BoothViewModel(
                             templateAssetStore.cacheOverlay(
                                 templateId = source.templateId,
                                 overlayUrl = source.overlayUrl,
-                                stationBaseUrl = current.stationIp,
+                                stationBaseUrl = stationBaseUrl,
                                 authToken = current.authToken,
                             ) ?: stored.overlayLocalPath
                         }
@@ -472,7 +526,7 @@ class BoothViewModel(
                             templateCode = stored.templateCode,
                             category = stored.category,
                             paperSize = stored.paperSize,
-                            thumbnailUrl = stored.thumbnailLocalPath,
+                            thumbnailUrl = resolveLocalTemplateThumbnailPath(stored),
                             thumbnailReady = readiness.thumbnailReady,
                             previewReady = readiness.previewReady,
                             overlayReady = readiness.overlayReady,
@@ -497,7 +551,7 @@ class BoothViewModel(
                     )
                 }
             }
-            is BoothResult.Failure -> showError(result.error)
+            is BoothResult.Failure -> showStationConnectionError(result.error)
         }
     }
 
@@ -610,7 +664,27 @@ class BoothViewModel(
 
     fun capturePhoto() {
         if (state.value.cameraSource == CameraSource.ExternalCanon) {
-            captureExternalPhoto()
+            if (externalCaptureJob?.isActive == true || state.value.isLoading) return
+            externalCaptureJob = viewModelScope.launch {
+                try {
+                    val countdown = state.value.countdownSeconds.coerceAtLeast(0)
+                    _state.update { it.copy(isLoading = true, errorMessage = null) }
+                    if (countdown > 0) {
+                        for (second in countdown downTo 1) {
+                            _state.update {
+                                it.copy(
+                                    eventStatusMessage = "Capture Canon dalam ${second}...",
+                                    errorMessage = null,
+                                )
+                            }
+                            delay(1000)
+                        }
+                    }
+                    captureExternalPhotoInternal()
+                } finally {
+                    externalCaptureJob = null
+                }
+            }
             return
         }
         _state.update {
@@ -1031,7 +1105,7 @@ class BoothViewModel(
         val cachedPath = templateAssetStore.cacheOverlay(
             templateId = templateId,
             overlayUrl = current.selectedTemplateOverlayUrl,
-            stationBaseUrl = current.stationIp,
+            stationBaseUrl = current.stationIp.toStationBaseUrl(),
             authToken = current.authToken,
         ) ?: return current
         templateSqliteStore.updateOverlayLocalPath(templateId, cachedPath)
@@ -1065,8 +1139,23 @@ class BoothViewModel(
         it.copy(launchEventName = value.trim(), errorMessage = null)
     }
 
-    fun setLaunchSelectedEventId(eventId: String) = updateAndPersistConfig {
-        it.copy(launchSelectedEventId = eventId.trim(), errorMessage = null)
+    fun setLaunchSelectedEventId(eventId: String) {
+        val trimmedId = eventId.trim()
+        // Langsung update state: set event ID baru + reset BG dulu (agar UI responsif)
+        _state.update { it.copy(launchSelectedEventId = trimmedId, welcomeBgUri = "", welcomeBgIsVideo = false, errorMessage = null) }
+        viewModelScope.launch {
+            // 1. Simpan event ID ke DataStore (tanpa overwrite BG event lain)
+            configStore.saveSelectedEventId(trimmedId)
+            // 2. Load BG yang tersimpan untuk event baru ini
+            val (bgUri, bgIsVideo) = configStore.loadWelcomeBgForEvent(trimmedId)
+            // 3. Update state dengan BG yang benar untuk event ini
+            _state.update { current ->
+                // Pastikan event ID masih sama (user belum ganti lagi)
+                if (current.launchSelectedEventId == trimmedId) {
+                    current.copy(welcomeBgUri = bgUri, welcomeBgIsVideo = bgIsVideo)
+                } else current
+            }
+        }
     }
 
     fun toggleLaunchAllowedTemplate(templateId: String) = updateAndPersistConfig {
@@ -1105,7 +1194,15 @@ class BoothViewModel(
 
     fun updateCustomerId(value: String) = updateAndPersistConfig { it.copy(customerId = value, errorMessage = null) }
 
-    fun updatePaymentMethod(value: String) = updateAndPersistConfig { it.copy(paymentMethod = value, errorMessage = null) }
+    fun updatePaymentMethod(value: String) = updateAndPersistConfig {
+        val normalized = value.trim().lowercase()
+        val allowed = setOf("manual", "qris")
+        it.copy(paymentMethod = if (normalized in allowed) normalized else "manual", errorMessage = null)
+    }
+
+    fun updateKioskExitCode(value: String) = updateAndPersistConfig {
+        it.copy(kioskExitCode = value.trim(), errorMessage = null)
+    }
 
     fun startLaunchEventGate() = _state.update {
         if (it.isStationConnected) {
@@ -1128,19 +1225,36 @@ class BoothViewModel(
         if (value != CameraSource.ExternalCanon) {
             externalPreviewJob?.cancel()
             externalPreviewJob = null
-            it.copy(cameraSource = value, externalPreviewPath = null, externalPreviewBytes = null)
+            runCatching { canonPtpSession?.stopLiveView() }
+            canonPtpSession = null
+            runCatching { canonUsbController.close() }
+            it.copy(
+                cameraSource = value,
+                externalCameraStatus = ExternalCameraStatus.Disconnected,
+                externalCameraType = "-",
+                externalPreviewPath = null,
+                externalPreviewBytes = null,
+            )
         } else {
             it.copy(cameraSource = value)
         }
     }
 
     fun scanExternalCamera() = updateAndPersistConfig {
+        val scanningState = it.copy(
+            cameraSource = CameraSource.ExternalCanon,
+            externalCameraStatus = ExternalCameraStatus.Scanning,
+            eventStatusMessage = "Scanning kamera Canon...",
+            errorMessage = null,
+        )
         val device = canonUsbController.findCanonDevice()
-        it.copy(
+        val cameraType = canonUsbController.describeCamera(device)
+        scanningState.copy(
             cameraSource = CameraSource.ExternalCanon,
             externalCameraStatus = if (device != null) ExternalCameraStatus.Pairing else ExternalCameraStatus.Disconnected,
+            externalCameraType = cameraType,
             eventStatusMessage = if (device != null) {
-                "Canon terdeteksi. Lanjut Pairing untuk minta izin USB."
+                "$cameraType terdeteksi. Lanjut Pairing untuk minta izin USB."
             } else {
                 "Canon belum terdeteksi. Cek kabel USB/OTG dan nyalakan kamera."
             },
@@ -1149,26 +1263,33 @@ class BoothViewModel(
 
     fun pairExternalCamera() = updateAndPersistConfig {
         val device = canonUsbController.findCanonDevice()
+        val cameraType = canonUsbController.describeCamera(device)
         when {
             device == null -> it.copy(
                 externalCameraStatus = ExternalCameraStatus.Disconnected,
+                externalCameraType = "-",
                 eventStatusMessage = "Canon tidak ditemukan saat pairing.",
             )
             canonUsbController.hasPermission(device) -> it.copy(
                 externalCameraStatus = ExternalCameraStatus.Pairing,
-                eventStatusMessage = "USB permission sudah ada. Lanjut Connect.",
+                externalCameraType = cameraType,
+                eventStatusMessage = "$cameraType: USB permission sudah ada. Lanjut Connect.",
             )
             else -> {
                 canonUsbController.requestPermission(device)
                 it.copy(
                     externalCameraStatus = ExternalCameraStatus.Pairing,
-                    eventStatusMessage = "Meminta USB permission. Izinkan di popup lalu klik Connect.",
+                    externalCameraType = cameraType,
+                    eventStatusMessage = "$cameraType: meminta USB permission. Izinkan di popup lalu klik Connect.",
                 )
             }
         }
     }
 
     fun markExternalCameraConnected() = viewModelScope.launch {
+        if (externalConnectInProgress) return@launch
+        externalConnectInProgress = true
+        try {
         _state.update {
             it.copy(
                 externalCameraStatus = ExternalCameraStatus.Pairing,
@@ -1181,6 +1302,7 @@ class BoothViewModel(
             _state.update {
                 it.copy(
                     externalCameraStatus = ExternalCameraStatus.Disconnected,
+                    externalCameraType = "-",
                     eventStatusMessage = "Canon tidak ditemukan.",
                 )
             }
@@ -1199,6 +1321,7 @@ class BoothViewModel(
             _state.update {
                 it.copy(
                     externalCameraStatus = ExternalCameraStatus.Disconnected,
+                    externalCameraType = "-",
                     eventStatusMessage = "Gagal membuka koneksi USB Canon.",
                 )
             }
@@ -1237,13 +1360,24 @@ class BoothViewModel(
             it.copy(
                 cameraSource = CameraSource.ExternalCanon,
                 externalCameraStatus = ExternalCameraStatus.Connected,
+                externalCameraType = canonUsbController.describeCamera(device),
                 eventStatusMessage = "Canon connected. Siap capture.",
                 errorMessage = null,
             )
         }
+        if (state.value.step == BoothStep.Camera) {
+            startExternalPreviewLoop(session)
+        }
+        } finally {
+            externalConnectInProgress = false
+        }
     }
 
     fun setMirrorLiveView(value: Boolean) = updateAndPersistConfig { it.copy(mirrorLiveView = value) }
+
+    fun setExternalPreviewFps(value: Int) = updateAndPersistConfig {
+        it.copy(externalPreviewFps = value.coerceIn(10, 24))
+    }
 
     fun setMirrorCapture(value: Boolean) = updateAndPersistConfig { it.copy(mirrorCapture = value) }
 
@@ -1308,6 +1442,14 @@ class BoothViewModel(
         }
     }
 
+    fun setWelcomeBgUri(value: String) = updateAndPersistConfig {
+        it.copy(welcomeBgUri = value)
+    }
+
+    fun setWelcomeBgIsVideo(value: Boolean) = updateAndPersistConfig {
+        it.copy(welcomeBgIsVideo = value)
+    }
+
     fun loginDevice() = launchRequest {
         val current = state.value
         if (current.deviceId.isBlank()) {
@@ -1322,6 +1464,9 @@ class BoothViewModel(
             )
         ) {
             is BoothResult.Success -> {
+                val now = java.time.Instant.now().toString()
+                HeartbeatWorker.cancel(appContext)
+                OfflineQueueWorker.cancel(appContext)
                 val connectedState = current.copy(
                     stationIp = result.value.baseUrl,
                     deviceId = current.deviceId.trim(),
@@ -1331,18 +1476,42 @@ class BoothViewModel(
                     errorMessage = null,
                 )
                 configStore.save(connectedState.toDeviceConfig())
+                stationBootstrap.setStationBaseUrl(connectedState.stationIp.toStationBaseUrl())
                 sessionStateManager.updateConnection(
                     stationIp = connectedState.stationIp,
                     deviceId = connectedState.deviceId,
                     apiKey = connectedState.token,
                     authToken = connectedState.authToken,
+                    isStationReachable = connectedState.isStationReachable,
+                )
+                val previousHeartbeat = heartbeatStatusStore.snapshot()
+                heartbeatStatusStore.save(
+                    HeartbeatStatus(
+                        localIp = connectedState.heartbeatLocalIp.takeIf { it.isNotBlank() && it != "-" }
+                            ?: previousHeartbeat.localIp,
+                        appVersion = BuildConfig.VERSION_NAME,
+                        os = "Android ${Build.VERSION.RELEASE}",
+                        capabilities = "camera=true, printer=false, offline_queue=true, local_render=true",
+                        lastHeartbeatAt = now,
+                        lastSyncAt = now,
+                        lastResult = "success",
+                        lastSuccessAt = now,
+                        consecutiveFailures = 0,
+                    ),
                 )
                 if (connectedState.authToken.isNotBlank()) {
                     stationTokenStore.saveToken(connectedState.authToken)
                 }
+                HeartbeatWorker.ensurePeriodic(appContext)
+                OfflineQueueWorker.enqueue(appContext)
                 _state.update { connectedState }
+                val immediateLocalIp = connectedState.heartbeatLocalIp.takeIf { it.isNotBlank() && it != "-" }
+                    ?: current.heartbeatLocalIp.takeIf { it.isNotBlank() && it != "-" }
+                if (!immediateLocalIp.isNullOrBlank() && isValidIpv4(immediateLocalIp)) {
+                    sendHeartbeatNow(immediateLocalIp)
+                }
             }
-            is BoothResult.Failure -> showError(result.error)
+            is BoothResult.Failure -> showStationConnectionError(result.error)
         }
     }
 
@@ -1430,11 +1599,27 @@ class BoothViewModel(
         val sessionId = state.value.session?.sessionId.orEmpty()
         when (val result = useCases.checkPayment(sessionId)) {
             is BoothResult.Success -> _state.update {
-                if (result.value.canUpload || result.value.unlockPhoto || result.value.paymentStatus == "paid") {
+                val paymentStatus = result.value.paymentStatus
+                val reviewStatus = result.value.reviewStatus
+                val approvalStatus = result.value.approvalStatus
+                val approved = result.value.canUpload || result.value.unlockPhoto || paymentStatus == "paid"
+                val rejected = paymentStatus.isRejectedPaymentStatus() ||
+                    reviewStatus.isRejectedPaymentStatus() ||
+                    approvalStatus.isRejectedPaymentStatus() ||
+                    !result.value.rejectionReason.isNullOrBlank()
+                if (approved) {
                     it.copy(
                         paymentStatus = result.value,
                         step = BoothStep.TemplatePicker,
                         eventStatusMessage = "Payment approved untuk session ${result.value.sessionCode ?: result.value.sessionId}. Silakan pilih template.",
+                        errorMessage = null,
+                    )
+                } else if (rejected) {
+                    val reason = result.value.rejectionReason?.takeIf { msg -> msg.isNotBlank() } ?: "alasan tidak tersedia"
+                    it.copy(
+                        paymentStatus = result.value,
+                        step = BoothStep.PaymentGate,
+                        eventStatusMessage = "Payment ditolak untuk session ${result.value.sessionCode ?: result.value.sessionId}: $reason. Silakan ulangi manual payment.",
                         errorMessage = null,
                     )
                 } else {
@@ -1463,16 +1648,14 @@ class BoothViewModel(
 
     fun createManualPaymentSession() = launchRequest {
         val current = state.value
-        val quoteId = current.quote?.quoteId.orEmpty()
+        val selectedPaymentMethod = current.paymentMethod.ifBlank { "manual" }
         when (
-            val result = useCases.createSession(
-                current.deviceId,
+            val result = useCases.openManualSession(
                 current.launchSelectedEventId,
+                current.customerWhatsapp.ifBlank { null },
                 current.voucherCode,
-                current.voucherType,
-                quoteId,
-                current.sessionType,
-                current.customerId.ifBlank { null },
+                selectedPaymentMethod,
+                current.launchAdditionalPrintCount,
             )
         ) {
             is BoothResult.Success -> _state.update {
@@ -1485,7 +1668,7 @@ class BoothViewModel(
                     uploadedSessionPhotosBySlot = emptyMap(),
                     capturedPhotoName = null,
                     capturedPhotoPath = null,
-                    eventStatusMessage = "Session ${result.value.sessionCode ?: result.value.sessionId} dibuat. Tunggu approval dari Photobooth Station.",
+                    eventStatusMessage = "Session ${result.value.sessionCode ?: result.value.sessionId} dibuat dengan metode ${selectedPaymentMethod}. Tunggu approval dari Photobooth Station.",
                     errorMessage = null,
                 )
             }
@@ -1599,6 +1782,40 @@ class BoothViewModel(
         _state.update { it.copy(errorMessage = rawMessage) }
     }
 
+    private fun showStationConnectionError(error: BoothError) {
+        val friendlyMessage = when (error) {
+            is BoothError.Network -> {
+                val detail = error.message.ifBlank { "Station tidak bisa dijangkau" }
+                "Station tidak ditemukan. Periksa IP station, jaringan Wi-Fi/LAN, dan pastikan station sedang aktif. Detail: $detail"
+            }
+            is BoothError.Unauthorized -> {
+                "Autentikasi station gagal. Periksa token/API key yang dipakai."
+            }
+            is BoothError.Forbidden -> {
+                "Station menolak akses. Periksa izin device pada station."
+            }
+            is BoothError.Validation -> {
+                val lower = error.message.lowercase()
+                when {
+                    lower.contains("device") -> "Device ID tidak valid. Periksa kode device pada station."
+                    lower.contains("token") || lower.contains("credential") -> "Credential station tidak valid. Periksa token dan device ID."
+                    lower.contains("format station ip") -> "Format Station IP tidak valid. Contoh yang benar: 10.0.2.2:8000"
+                    else -> "Konfigurasi station tidak valid. Periksa IP, Device ID, dan token."
+                }
+            }
+            is BoothError.Unknown -> {
+                "Gagal menghubungkan station. ${error.message}"
+            }
+        }
+        _state.update {
+            it.copy(
+                errorMessage = friendlyMessage,
+                eventStatusMessage = "Photobooth Station belum terhubung.",
+                isStationConnected = false,
+            )
+        }
+    }
+
     private fun isVoucherValidationContext(): Boolean {
         return state.value.step == BoothStep.VoucherCheck || state.value.step == BoothStep.PaymentGate
     }
@@ -1627,11 +1844,13 @@ class BoothViewModel(
     private fun updateAndPersistConfig(transform: (BoothUiState) -> BoothUiState) {
         val updated = transform(state.value)
         _state.value = updated
+        stationBootstrap.setStationBaseUrl(updated.stationIp.toStationBaseUrl())
         sessionStateManager.updateConnection(
             stationIp = updated.stationIp,
             deviceId = updated.deviceId,
             apiKey = updated.token,
             authToken = updated.authToken,
+            isStationReachable = updated.isStationReachable,
         )
         viewModelScope.launch {
             configStore.save(updated.toDeviceConfig())
@@ -1641,9 +1860,133 @@ class BoothViewModel(
     override fun onCleared() {
         externalPreviewJob?.cancel()
         externalPreviewJob = null
+        unregisterUsbReceiver()
         runCatching { canonUsbController.close() }
         canonPtpSession = null
         super.onCleared()
+    }
+
+    private fun registerUsbReceiver() {
+        if (usbReceiverRegistered) return
+        val filter = IntentFilter().apply {
+            addAction(ACTION_USB_PERMISSION)
+            addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED)
+            addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            appContext.registerReceiver(usbReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            ContextCompat.registerReceiver(
+                appContext,
+                usbReceiver,
+                filter,
+                ContextCompat.RECEIVER_NOT_EXPORTED,
+            )
+        }
+        usbReceiverRegistered = true
+    }
+
+    private fun unregisterUsbReceiver() {
+        if (!usbReceiverRegistered) return
+        runCatching { appContext.unregisterReceiver(usbReceiver) }
+        usbReceiverRegistered = false
+    }
+
+    private fun handleUsbPermissionResult(intent: Intent) {
+        val granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
+        val device = intent.getParcelableExtraCompat<UsbDevice>(UsbManager.EXTRA_DEVICE)
+        if (device?.vendorId != CANON_VENDOR_ID) return
+        viewModelScope.launch {
+            if (granted) {
+                _state.update {
+                    it.copy(
+                        externalCameraStatus = ExternalCameraStatus.Pairing,
+                        externalCameraType = canonUsbController.describeCamera(device),
+                        eventStatusMessage = "USB permission disetujui. Menghubungkan ke Canon...",
+                        errorMessage = null,
+                    )
+                }
+                markExternalCameraConnected()
+            } else {
+                _state.update {
+                    it.copy(
+                        externalCameraStatus = ExternalCameraStatus.Pairing,
+                        eventStatusMessage = "USB permission ditolak. Klik Pairing lalu izinkan akses USB.",
+                    )
+                }
+            }
+        }
+    }
+
+    private fun handleUsbAttached(intent: Intent) {
+        val device = intent.getParcelableExtraCompat<UsbDevice>(UsbManager.EXTRA_DEVICE)
+        if (device?.vendorId != CANON_VENDOR_ID) return
+        viewModelScope.launch {
+            val now = System.currentTimeMillis()
+            if (now - lastUsbAttachHandledAt < 1500L) return@launch
+            lastUsbAttachHandledAt = now
+            if (state.value.cameraSource != CameraSource.ExternalCanon) return@launch
+            _state.update {
+                it.copy(
+                    externalCameraStatus = ExternalCameraStatus.Scanning,
+                    externalCameraType = canonUsbController.describeCamera(device),
+                    eventStatusMessage = "Canon terpasang. Scanning perangkat...",
+                    errorMessage = null,
+                )
+            }
+            delay(250)
+            _state.update {
+                it.copy(
+                    externalCameraStatus = ExternalCameraStatus.Pairing,
+                    externalCameraType = canonUsbController.describeCamera(device),
+                    eventStatusMessage = "Canon terdeteksi. Menyiapkan Pairing USB...",
+                    errorMessage = null,
+                )
+            }
+            if (canonUsbController.hasPermission(device)) {
+                markExternalCameraConnected()
+            } else {
+                canonUsbController.requestPermission(device)
+                _state.update {
+                    it.copy(
+                        externalCameraStatus = ExternalCameraStatus.Pairing,
+                        eventStatusMessage = "Meminta USB permission. Izinkan popup untuk lanjut koneksi otomatis.",
+                        errorMessage = null,
+                    )
+                }
+            }
+        }
+    }
+
+    private fun handleUsbDetached(intent: Intent) {
+        val device = intent.getParcelableExtraCompat<UsbDevice>(UsbManager.EXTRA_DEVICE)
+        if (device?.vendorId != CANON_VENDOR_ID) return
+        viewModelScope.launch {
+            externalPreviewJob?.cancel()
+            externalPreviewJob = null
+            runCatching { canonPtpSession?.stopLiveView() }
+            canonPtpSession = null
+            runCatching { canonUsbController.close() }
+            updateAndPersistConfig {
+                it.copy(
+                    externalCameraStatus = ExternalCameraStatus.Disconnected,
+                    externalCameraType = "-",
+                    externalPreviewPath = null,
+                    externalPreviewBytes = null,
+                    eventStatusMessage = "Canon terlepas. Sambungkan ulang lalu Pairing/Connect.",
+                    errorMessage = null,
+                )
+            }
+        }
+    }
+
+    private inline fun <reified T> Intent.getParcelableExtraCompat(key: String): T? {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            getParcelableExtra(key, T::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            getParcelableExtra(key)
+        }
     }
 
     private fun startExternalPreviewLoop(session: PtpSession) {
@@ -1662,7 +2005,11 @@ class BoothViewModel(
                     // Ignore tiny thumb frames to keep preview stable on EVF stream.
                     if (previewBytes.size >= 50 * 1024) {
                         val now = System.currentTimeMillis()
-                        if (now - lastPreviewUiUpdateAt >= 160) {
+                        val targetFps = snapshot.externalPreviewFps.coerceIn(10, 24)
+                        // Keep UI update conservative to avoid GC-driven jank/freezes on long sessions.
+                        val minInterval = if (targetFps >= 20) 80L else 100L
+                        val uiFrameIntervalMs = (1000L / targetFps).coerceAtLeast(minInterval)
+                        if (now - lastPreviewUiUpdateAt >= uiFrameIntervalMs) {
                             lastPreviewUiUpdateAt = now
                             _state.update { it.copy(externalPreviewBytes = previewBytes) }
                             logSlotDebug("canonPreview updated bytes=${previewBytes.size} source=memory")
@@ -1671,12 +2018,15 @@ class BoothViewModel(
                 } else {
                     logSlotDebug("canonPreview unavailable on this poll")
                 }
-                delay(120)
+                val targetFps = snapshot.externalPreviewFps.coerceIn(10, 24)
+                val minDelay = if (targetFps >= 20) 80L else 100L
+                val pollDelay = (1000L / targetFps).coerceAtLeast(minDelay)
+                delay(pollDelay)
             }
         }
     }
 
-    private fun captureExternalPhoto() = viewModelScope.launch {
+    private suspend fun captureExternalPhotoInternal() {
         val ptp = canonPtpSession
         if (ptp == null || state.value.externalCameraStatus != ExternalCameraStatus.Connected) {
             _state.update {
@@ -1684,14 +2034,13 @@ class BoothViewModel(
                     errorMessage = "Canon belum connected. Lakukan Scan -> Pairing -> Connect.",
                 )
             }
-            return@launch
+            return
         }
         val previewJob = externalPreviewJob
         previewJob?.cancelAndJoin()
         externalPreviewJob = null
         _state.update { it.copy(isLoading = true, errorMessage = null, eventStatusMessage = "Trigger shutter Canon...") }
         val filePath = withContext(Dispatchers.IO) {
-            ptp.stopLiveView()
             val beforeHandles = ptp.listObjectHandles().orEmpty().toSet()
             var fired = false
             for (retry in 0 until 3) {
@@ -1771,13 +2120,13 @@ class BoothViewModel(
         if (filePath.isNullOrBlank()) {
             _state.update {
                 it.copy(
-                    errorMessage = "Capture Canon gagal. Foto belum terbaca dari kamera. Pastikan storage kamera siap, mode remote aktif, lalu coba lagi.",
+                    errorMessage = "Capture Canon gagal. Kemungkinan AF/Busy/Storage kamera belum siap. Coba fokuskan objek, cek SD card, lalu ulangi.",
                 )
             }
             if (state.value.externalCameraStatus == ExternalCameraStatus.Connected) {
                 startExternalPreviewLoop(ptp)
             }
-            return@launch
+            return
         }
         if (state.value.externalCameraStatus == ExternalCameraStatus.Connected) {
             startExternalPreviewLoop(ptp)
@@ -1832,7 +2181,7 @@ class BoothViewModel(
                 templateAssetStore.cacheThumbnail(
                     templateId = templateId,
                     thumbnailUrl = selected.thumbnailUrl,
-                    stationBaseUrl = current.stationIp,
+                    stationBaseUrl = current.stationIp.toStationBaseUrl(),
                     authToken = current.authToken,
                 )
             } else {
@@ -1842,7 +2191,7 @@ class BoothViewModel(
                 templateAssetStore.cachePreview(
                     templateId = templateId,
                     previewUrl = selected.previewUrl,
-                    stationBaseUrl = current.stationIp,
+                    stationBaseUrl = current.stationIp.toStationBaseUrl(),
                     authToken = current.authToken,
                 )
             } else {
@@ -1852,7 +2201,7 @@ class BoothViewModel(
                 templateAssetStore.cacheOverlay(
                     templateId = templateId,
                     overlayUrl = selected.overlayUrl,
-                    stationBaseUrl = current.stationIp,
+                    stationBaseUrl = current.stationIp.toStationBaseUrl(),
                     authToken = current.authToken,
                 )
             } else {
@@ -2068,10 +2417,18 @@ class BoothViewModel(
         )
     }
 
+    private fun resolveLocalTemplateThumbnailPath(stored: StoredTemplate): String? {
+        return when {
+            templateAssetStore.isLocalImageValid(stored.thumbnailLocalPath) -> stored.thumbnailLocalPath
+            templateAssetStore.isLocalImageValid(stored.previewLocalPath) -> stored.previewLocalPath
+            else -> null
+        }
+    }
+
     private fun resolveAssetUrl(rawUrl: String, stationBase: String): String {
         val trimmed = rawUrl.trim()
         if (trimmed.isBlank()) return rawUrl
-        val base = runCatching { URI(stationBase.trim()) }.getOrNull()
+        val base = runCatching { URI(stationBase.toStationBaseUrl()) }.getOrNull()
         val uri = runCatching { URI(trimmed) }.getOrNull()
         if (uri?.isAbsolute == true) {
             val host = uri.host?.lowercase()
@@ -2132,8 +2489,10 @@ private fun BoothUiState.toDeviceConfig() = DeviceConfig(
     voucherType = voucherType,
     sessionType = sessionType,
     paymentMethod = paymentMethod,
+    kioskExitCode = kioskExitCode,
     cameraSource = cameraSource.name,
     externalCameraStatus = externalCameraStatus.name,
+    externalPreviewFps = externalPreviewFps,
     mirrorLiveView = mirrorLiveView,
     mirrorCapture = mirrorCapture,
     imageQuality = imageQuality.name,
@@ -2145,11 +2504,9 @@ private fun BoothUiState.toDeviceConfig() = DeviceConfig(
     shutterSound = shutterSound,
     defaultPrinting = defaultPrinting,
     printUsePhotoboothStation = printUsePhotoboothStation,
+    welcomeBgUri = welcomeBgUri,
+    welcomeBgIsVideo = welcomeBgIsVideo,
 )
-
-private inline fun <reified T : Enum<T>> String.toEnum(default: T): T {
-    return enumValues<T>().firstOrNull { it.name == this } ?: default
-}
 
 private fun LaunchSession.toBoothSession() = BoothSession(
     sessionId = sessionId,
@@ -2170,4 +2527,12 @@ private fun com.errymaricha.dafydiobooth.data.session.SessionState.toBoothSessio
         paymentRequired = paymentRequired ?: true,
         unlockPhoto = unlockPhoto ?: false,
     )
+}
+
+private inline fun <reified T : Enum<T>> String.toEnum(default: T): T {
+    return try {
+        java.lang.Enum.valueOf(T::class.java, this)
+    } catch (e: Exception) {
+        default
+    }
 }

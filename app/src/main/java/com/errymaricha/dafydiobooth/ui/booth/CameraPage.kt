@@ -1,23 +1,24 @@
 package com.errymaricha.dafydiobooth.ui.booth
 
+import android.graphics.BitmapFactory
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.IconButton
@@ -30,12 +31,26 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.errymaricha.dafydiobooth.ui.launch.LaunchUiState
-import android.graphics.BitmapFactory
+
+@Composable
+fun CameraPageRedesign(
+    state: BoothUiState,
+    launchState: LaunchUiState,
+    actions: BoothActions,
+) {
+    CameraScreen(
+        state = state,
+        launchState = launchState,
+        actions = actions,
+    )
+}
 
 @Composable
 fun CameraScreen(
@@ -43,7 +58,9 @@ fun CameraScreen(
     launchState: LaunchUiState,
     actions: BoothActions,
 ) {
-    Box(modifier = Modifier.fillMaxSize()) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val isTablet = maxWidth >= 900.dp
+
         if (state.cameraSource == CameraSource.AndroidDefault) {
             AndroidCameraCapture(
                 state = state,
@@ -61,30 +78,31 @@ fun CameraScreen(
                 .statusBarsPadding()
                 .padding(start = 12.dp, top = 8.dp)
                 .size(42.dp)
-                .background(color = androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.45f), shape = CircleShape)
+                .background(color = Color.Black.copy(alpha = 0.42f), shape = CircleShape)
                 .align(Alignment.TopStart),
         ) {
             Text(
-                text = "✕",
-                color = androidx.compose.ui.graphics.Color.White,
+                text = "?",
+                color = Color.White,
                 fontWeight = FontWeight.Bold,
             )
         }
 
-        Text(
-            text = "Capture slot: ${state.capturedPhotosBySlot.size}/${state.templateSlotCount}",
-            color = androidx.compose.ui.graphics.Color.White,
-            fontWeight = FontWeight.Bold,
+        Surface(
             modifier = Modifier
                 .statusBarsPadding()
                 .align(Alignment.TopEnd)
-                .padding(top = 16.dp, end = 16.dp)
-                .background(
-                    color = androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.45f),
-                    shape = RoundedCornerShape(10.dp),
-                )
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-        )
+                .padding(top = 16.dp, end = 16.dp),
+            shape = RoundedCornerShape(16.dp),
+            color = Color.Black.copy(alpha = 0.44f),
+        ) {
+            Text(
+                text = "Capture slot: ${state.capturedPhotosBySlot.size}/${state.templateSlotCount}",
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            )
+        }
 
         if (state.hasBackCamera && state.hasFrontCamera && state.cameraSource == CameraSource.AndroidDefault) {
             OutlinedButton(
@@ -93,6 +111,7 @@ fun CameraScreen(
                     .statusBarsPadding()
                     .align(Alignment.TopEnd)
                     .padding(top = 64.dp, end = 16.dp),
+                shape = RoundedCornerShape(18.dp),
             ) {
                 Text(if (state.useFrontCamera) "Use Back Camera" else "Use Front Camera")
             }
@@ -104,7 +123,9 @@ fun CameraScreen(
                 enabled = state.externalCameraStatus == ExternalCameraStatus.Connected && !state.isLoading,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 116.dp),
+                    .padding(bottom = if (isTablet) 136.dp else 116.dp),
+                shape = RoundedCornerShape(24.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5B67FF)),
             ) {
                 Text("Capture Canon")
             }
@@ -117,43 +138,74 @@ fun CameraScreen(
                     .align(Alignment.TopCenter)
                     .padding(top = 12.dp, start = 12.dp, end = 12.dp),
             )
+
+            val countdownText = state.eventStatusMessage
+                ?.takeIf { it.startsWith("Capture Canon dalam ") }
+            if (!countdownText.isNullOrBlank()) {
+                Text(
+                    text = countdownText,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .background(
+                            color = Color.Black.copy(alpha = 0.6f),
+                            shape = RoundedCornerShape(16.dp),
+                        )
+                        .padding(horizontal = 20.dp, vertical = 12.dp),
+                )
+            }
         }
 
-        Column(
+        Surface(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.55f))
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+                .padding(horizontal = if (isTablet) 20.dp else 12.dp, vertical = 12.dp),
+            shape = RoundedCornerShape(24.dp),
+            color = Color.Black.copy(alpha = 0.56f),
         ) {
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                state.selectedTemplateSlots.sortedBy { it.slotIndex }.forEach { slot ->
-                    val captured = state.capturedPhotosBySlot.containsKey(slot.sourceSlotIndex)
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (captured) {
-                                androidx.compose.ui.graphics.Color(0xFF1B5E20)
-                            } else {
-                                androidx.compose.ui.graphics.Color(0xFF2A2A2A)
-                            },
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color.White.copy(alpha = 0.04f), Color.Transparent),
                         ),
-                        shape = RoundedCornerShape(10.dp),
-                    ) {
-                        Text(
-                            text = "Slot ${slot.slotIndex} (S${slot.sourceSlotIndex})",
-                            color = androidx.compose.ui.graphics.Color.White,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        )
+                    )
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    text = "Template Frames",
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    state.selectedTemplateSlots.sortedBy { it.slotIndex }.forEach { slot ->
+                        val captured = state.capturedPhotosBySlot.containsKey(slot.sourceSlotIndex)
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (captured) Color(0xFF1B5E20) else Color(0xFF2A2A2A),
+                            ),
+                            shape = RoundedCornerShape(14.dp),
+                        ) {
+                            Text(
+                                text = "Slot ${slot.slotIndex} (S${slot.sourceSlotIndex})",
+                                color = Color.White,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            )
+                        }
                     }
                 }
             }
-
         }
     }
 }
@@ -168,7 +220,11 @@ fun CameraSurface(state: BoothUiState) {
             val previewBytes = state.externalPreviewBytes
             if (previewBytes != null) {
                 val previewBitmap = remember(previewBytes) {
-                    BitmapFactory.decodeByteArray(previewBytes, 0, previewBytes.size)
+                    val opts = BitmapFactory.Options().apply {
+                        inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
+                        inSampleSize = 2
+                    }
+                    BitmapFactory.decodeByteArray(previewBytes, 0, previewBytes.size, opts)
                 }
                 DisposableEffect(previewBitmap) {
                     onDispose { previewBitmap?.recycle() }
@@ -204,10 +260,11 @@ private fun ExternalCameraRecoveryPanel(
     actions: BoothActions,
     modifier: Modifier = Modifier,
 ) {
+    val statusMessage = state.eventStatusMessage?.takeIf { it.isNotBlank() }
     val connectionHint = when (state.externalCameraStatus) {
         ExternalCameraStatus.Connected -> "Canon connected. Siap capture."
-        ExternalCameraStatus.Pairing -> "Lanjutkan Pairing/Connect setelah izin USB muncul."
-        ExternalCameraStatus.Scanning -> "Sedang scan kamera Canon..."
+        ExternalCameraStatus.Pairing -> "Pairing USB berjalan. Izinkan popup permission lalu tunggu koneksi otomatis."
+        ExternalCameraStatus.Scanning -> "Sedang scan kamera Canon. Pastikan kabel USB/OTG terpasang rapat."
         ExternalCameraStatus.Disconnected -> "Canon belum terhubung. Jalankan Scan -> Pairing -> Connect."
     }
     val error = state.errorMessage?.takeIf {
@@ -219,7 +276,7 @@ private fun ExternalCameraRecoveryPanel(
     Card(
         modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.72f),
+            containerColor = Color.Black.copy(alpha = 0.72f),
         ),
         shape = RoundedCornerShape(12.dp),
     ) {
@@ -229,23 +286,33 @@ private fun ExternalCameraRecoveryPanel(
         ) {
             Text(
                 text = "External Camera Recovery",
-                color = androidx.compose.ui.graphics.Color.White,
+                color = Color.White,
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                text = connectionHint,
-                color = androidx.compose.ui.graphics.Color.White,
+                text = statusMessage ?: connectionHint,
+                color = Color.White,
+            )
+            Text(
+                text = "Camera: ${state.externalCameraType}",
+                color = Color.White,
             )
             if (!error.isNullOrBlank()) {
                 Text(
                     text = "Error: $error",
-                    color = androidx.compose.ui.graphics.Color(0xFFFFCDD2),
+                    color = Color(0xFFFFCDD2),
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = actions.scanExternalCamera, enabled = !state.isLoading) { Text("Scan") }
-                OutlinedButton(onClick = actions.pairExternalCamera, enabled = !state.isLoading) { Text("Pairing") }
-                OutlinedButton(onClick = actions.markExternalCameraConnected, enabled = !state.isLoading) { Text("Connect") }
+                OutlinedButton(
+                    onClick = actions.pairExternalCamera,
+                    enabled = !state.isLoading && state.externalCameraStatus != ExternalCameraStatus.Scanning,
+                ) { Text("Pairing") }
+                OutlinedButton(
+                    onClick = actions.markExternalCameraConnected,
+                    enabled = !state.isLoading && state.externalCameraStatus != ExternalCameraStatus.Scanning,
+                ) { Text("Connect") }
             }
         }
     }

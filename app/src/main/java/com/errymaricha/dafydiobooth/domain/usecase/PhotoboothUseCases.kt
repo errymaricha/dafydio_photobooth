@@ -60,6 +60,26 @@ class CheckPaymentUseCase(private val repository: PhotoboothRepository) {
     }
 }
 
+class OpenBoothManualSessionUseCase(private val repository: PhotoboothRepository) {
+    suspend operator fun invoke(
+        eventId: String,
+        customerWhatsapp: String?,
+        voucherCode: String,
+        paymentMethod: String,
+        additionalPrintCount: Int = 0,
+    ): BoothResult<BoothSession> {
+        if (eventId.isBlank()) return BoothResult.Failure(BoothError.Validation("Event belum dipilih"))
+        if (paymentMethod.isBlank()) return BoothResult.Failure(BoothError.Validation("Payment method wajib diisi"))
+        return repository.openManualSession(
+            eventId = eventId,
+            customerWhatsapp = customerWhatsapp,
+            voucherCode = voucherCode,
+            paymentMethod = paymentMethod,
+            additionalPrintCount = additionalPrintCount,
+        )
+    }
+}
+
 class ConfirmPaymentUseCase(private val repository: PhotoboothRepository) {
     suspend operator fun invoke(deviceId: String, sessionId: String): BoothResult<PaymentStatus> {
         if (deviceId.isBlank()) return BoothResult.Failure(BoothError.Validation("Device belum login"))
@@ -177,6 +197,7 @@ data class PhotoboothUseCases(
     val requestPaymentQuote: RequestPaymentQuoteUseCase,
     val createSession: CreateSessionUseCase,
     val checkPayment: CheckPaymentUseCase,
+    val openManualSession: OpenBoothManualSessionUseCase,
     val confirmPayment: ConfirmPaymentUseCase,
     val uploadCapture: UploadCaptureUseCase,
     val refreshTemplates: RefreshTemplatesUseCase,

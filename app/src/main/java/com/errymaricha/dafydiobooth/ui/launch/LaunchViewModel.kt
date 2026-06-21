@@ -10,6 +10,7 @@ import com.errymaricha.dafydiobooth.domain.usecase.ListLaunchEventsUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.OpenManualSessionUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.PrepareLaunchUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.RequestLaunchPaymentQuoteUseCase
+import com.errymaricha.dafydiobooth.domain.usecase.SyncLaunchPricingUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.UpdateLaunchEventUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.VerifyLaunchVoucherUseCase
 import kotlinx.coroutines.Job
@@ -22,6 +23,7 @@ import kotlinx.coroutines.launch
 
 class LaunchViewModel(
     private val prepareLaunch: PrepareLaunchUseCase,
+    private val syncLaunchPricing: SyncLaunchPricingUseCase,
     private val listLaunchEvents: ListLaunchEventsUseCase,
     private val createLaunchEvent: CreateLaunchEventUseCase,
     private val updateLaunchEvent: UpdateLaunchEventUseCase,
@@ -143,13 +145,19 @@ class LaunchViewModel(
         viewModelScope.launch {
             runCatching {
                 _ui.update { it.copy(loading = true, error = null, message = null) }
-                val (token, pricing) = prepareLaunch(deviceCode, apiKey)
                 val snapshot = sessionStateManager.snapshot()
+                val existingToken = snapshot.authToken.ifBlank { _ui.value.token.orEmpty() }
+                val (token, pricing) = if (existingToken.isNotBlank()) {
+                    existingToken to syncLaunchPricing(existingToken)
+                } else {
+                    prepareLaunch(deviceCode, apiKey)
+                }
                 sessionStateManager.updateConnection(
                     stationIp = snapshot.stationIp,
                     deviceId = deviceCode.trim(),
                     apiKey = apiKey.trim(),
                     authToken = token,
+                    isStationReachable = snapshot.isStationReachable,
                 )
                 val total = calculateFinalAmount(
                     pricing.photoboothPrice,

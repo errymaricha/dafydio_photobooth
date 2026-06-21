@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
@@ -20,6 +21,8 @@ data class HeartbeatStatus(
     val lastHeartbeatAt: String = "-",
     val lastSyncAt: String = "-",
     val lastResult: String = "-",
+    val lastSuccessAt: String = "-",
+    val consecutiveFailures: Int = 0,
 )
 
 class HeartbeatStatusStore(private val context: Context) {
@@ -36,4 +39,6 @@ class HeartbeatStatusStore(private val context: Context) {
             pref[key] = json.encodeToString(HeartbeatStatus.serializer(), value)
         }
     }
+
+    suspend fun snapshot(): HeartbeatStatus = status.first()
 }

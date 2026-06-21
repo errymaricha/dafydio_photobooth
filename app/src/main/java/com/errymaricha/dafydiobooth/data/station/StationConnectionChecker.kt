@@ -40,7 +40,7 @@ class StationConnectionChecker {
         }
         val normalizedDeviceId = deviceId.trim()
         val normalizedToken = token.trim()
-        val baseUrl = stationIp.toBaseUrl()
+        val baseUrl = stationIp.toStationBaseUrl()
         if (baseUrl.isBlank()) {
             Log.i(TAG, "Station IP kosong, mulai auto-discovery")
             return discoverAndConnect(normalizedDeviceId, normalizedToken)
@@ -178,24 +178,4 @@ class StationConnectionChecker {
     private companion object {
         const val TAG = "DafydioStation"
     }
-}
-
-private fun String.toBaseUrl(): String {
-    val value = trim()
-    if (value.isBlank()) return ""
-    val withScheme = if (value.startsWith("http://") || value.startsWith("https://")) {
-        value
-    } else {
-        "http://$value"
-    }
-    val withoutSlash = withScheme.trimEnd('/')
-    val schemeEnd = withoutSlash.indexOf("://")
-    val hostAndMaybePort = if (schemeEnd >= 0) {
-        withoutSlash.substring(schemeEnd + 3)
-    } else {
-        withoutSlash
-    }
-    val hasPort = hostAndMaybePort.substringBefore('/').contains(":")
-    val withDefaultPort = if (hasPort) withoutSlash else "$withoutSlash:8000"
-    return "$withDefaultPort/"
 }

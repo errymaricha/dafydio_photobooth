@@ -36,6 +36,8 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -46,12 +48,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
@@ -61,8 +65,19 @@ import androidx.navigation.compose.rememberNavController
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import com.errymaricha.dafydiobooth.domain.model.LaunchSession
+import com.errymaricha.dafydiobooth.ui.dashboard.DashboardRedesignContainer
+import com.errymaricha.dafydiobooth.ui.events.AllowedTemplatesPageRedesign
+import com.errymaricha.dafydiobooth.ui.events.EventsPageRedesign
+import com.errymaricha.dafydiobooth.ui.launch.LaunchPageRedesign
 import com.errymaricha.dafydiobooth.ui.launch.LaunchUiState
 import com.errymaricha.dafydiobooth.ui.launch.LaunchViewModel
+import com.errymaricha.dafydiobooth.ui.launch.PaymentGatePageRedesign
+import com.errymaricha.dafydiobooth.ui.launch.VoucherCheckPageRedesign
+import com.errymaricha.dafydiobooth.ui.launch.WaitingApprovalPageRedesign
+import com.errymaricha.dafydiobooth.ui.setup.SetupPageRedesign
+import com.errymaricha.dafydiobooth.ui.template.CustomTemplatePageRedesign
+import com.errymaricha.dafydiobooth.ui.template.TemplatePickerPageRedesign
+import com.errymaricha.dafydiobooth.ui.template.TemplatePreviewPageRedesign
 import java.io.File
 import android.util.Log
 import kotlinx.coroutines.delay
@@ -124,6 +139,7 @@ private fun BoothViewModel.toActions() = BoothActions(
     updateSessionType = ::updateSessionType,
     updateCustomerId = ::updateCustomerId,
     updatePaymentMethod = ::updatePaymentMethod,
+    updateKioskExitCode = ::updateKioskExitCode,
     verifyVoucher = ::verifyVoucher,
     continueWithoutVoucher = ::continueWithoutVoucher,
     requestQuote = ::requestQuote,
@@ -135,6 +151,7 @@ private fun BoothViewModel.toActions() = BoothActions(
     pairExternalCamera = ::pairExternalCamera,
     markExternalCameraConnected = ::markExternalCameraConnected,
     setMirrorLiveView = ::setMirrorLiveView,
+    setExternalPreviewFps = ::setExternalPreviewFps,
     setMirrorCapture = ::setMirrorCapture,
     setImageQuality = ::setImageQuality,
     updateDetectedCameras = ::updateDetectedCameras,
@@ -151,6 +168,8 @@ private fun BoothViewModel.toActions() = BoothActions(
     retry = ::retry,
     sendHeartbeatNow = ::sendHeartbeatNow,
     onStepChanged = ::onStepChanged,
+    setWelcomeBgUri = ::setWelcomeBgUri,
+    setWelcomeBgIsVideo = ::setWelcomeBgIsVideo,
 )
 
 data class BoothActions(
@@ -192,6 +211,7 @@ data class BoothActions(
     val updateSessionType: (String) -> Unit = {},
     val updateCustomerId: (String) -> Unit = {},
     val updatePaymentMethod: (String) -> Unit = {},
+    val updateKioskExitCode: (String) -> Unit = {},
     val verifyVoucher: () -> Unit = {},
     val continueWithoutVoucher: () -> Unit = {},
     val requestQuote: () -> Unit = {},
@@ -203,6 +223,7 @@ data class BoothActions(
     val pairExternalCamera: () -> Unit = {},
     val markExternalCameraConnected: () -> Unit = {},
     val setMirrorLiveView: (Boolean) -> Unit = {},
+    val setExternalPreviewFps: (Int) -> Unit = {},
     val setMirrorCapture: (Boolean) -> Unit = {},
     val setImageQuality: (ImageQuality) -> Unit = {},
     val updateDetectedCameras: (Boolean, Boolean) -> Unit = { _, _ -> },
@@ -219,6 +240,8 @@ data class BoothActions(
     val retry: () -> Unit = {},
     val sendHeartbeatNow: (String) -> Unit = {},
     val onStepChanged: (BoothStep) -> Unit = {},
+    val setWelcomeBgUri: (String) -> Unit = {},
+    val setWelcomeBgIsVideo: (Boolean) -> Unit = {},
 )
 
 private fun LaunchViewModel.toActions() = LaunchActions(
@@ -263,6 +286,7 @@ fun BoothApp(
     val actions = viewModel.toActions()
     val launchActions = launchViewModel.toActions()
     var pendingDownload by remember { mutableStateOf(false) }
+    var showExitDialog by remember { mutableStateOf(false) }
     val storagePermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
     ) { granted ->
@@ -300,15 +324,20 @@ fun BoothApp(
         }
     }
 
-    LaunchedEffect(state.step, state.deviceId, state.token) {
-        if ((state.step == BoothStep.LaunchEvent || state.step == BoothStep.SettingEvent) && state.isStationConnected) {
-            if (state.launchSelectedEventId.isNotBlank()) {
-                launchViewModel.onSelectEvent(state.launchSelectedEventId)
-            }
+    LaunchedEffect(state.isStationReachable, state.deviceId, state.token) {
+        if (state.isStationReachable && state.deviceId.isNotBlank() && state.token.isNotBlank()) {
             launchViewModel.init(
                 deviceCode = state.deviceId,
                 apiKey = state.token,
             )
+        }
+    }
+
+    LaunchedEffect(state.step, state.launchSelectedEventId, state.customerWhatsapp, state.voucherCode, state.launchAdditionalPrintCount) {
+        if ((state.step == BoothStep.LaunchEvent || state.step == BoothStep.SettingEvent) && state.isStationReachable) {
+            if (state.launchSelectedEventId.isNotBlank()) {
+                launchViewModel.onSelectEvent(state.launchSelectedEventId)
+            }
             if (launchState.customerWhatsapp.isBlank() && state.customerWhatsapp.isNotBlank()) {
                 launchViewModel.onWhatsappChanged(state.customerWhatsapp)
             }
@@ -342,6 +371,33 @@ fun BoothApp(
         }
     }
 
+    BackHandler {
+        if (state.step != BoothStep.Dashboard) {
+            actions.openDashboard()
+        } else {
+            showExitDialog = true
+        }
+    }
+
+    if (showExitDialog) {
+        AlertDialog(
+            onDismissRequest = { showExitDialog = false },
+            title = { Text("Keluar Aplikasi") },
+            text = { Text("Yakin ingin keluar dari aplikasi?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showExitDialog = false
+                        (context as? android.app.Activity)?.finish()
+                    },
+                ) { Text("Keluar") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExitDialog = false }) { Text("Batal") }
+            },
+        )
+    }
+
     Scaffold { innerPadding ->
         NavHost(
             navController = navController,
@@ -351,49 +407,55 @@ fun BoothApp(
                 .padding(innerPadding),
         ) {
             composable(BoothRoute.Splash.route) {
-                SplashScreen(actions = actions)
+                SplashPageRedesign(actions = actions)
             }
             composable(BoothRoute.Dashboard.route) {
-                DashboardScreen(state = state, actions = actions)
+                DashboardRedesignContainer(
+                    state = state,
+                    actions = actions,
+                    launchState = launchState,
+                    launchActions = launchActions,
+                )
             }
             composable(BoothRoute.TemplatePicker.route) {
-                TemplatePickerScreen(
+                TemplatePickerPageRedesign(
                     state = state,
                     launchState = launchState,
                     actions = actions,
                 )
             }
             composable(BoothRoute.CustomTemplate.route) {
-                CustomTemplateScreen(state = state, actions = actions)
+                CustomTemplatePageRedesign(state = state, actions = actions)
             }
             composable(BoothRoute.Camera.route) {
-                CameraScreen(state = state, launchState = launchState, actions = actions)
+                CameraPageRedesign(state = state, launchState = launchState, actions = actions)
             }
             composable(BoothRoute.CapturePreview.route) {
-                CapturePreviewScreen(state = state, actions = actions)
+                CapturePreviewPageRedesign(state = state, actions = actions)
             }
             composable(BoothRoute.TemplatePreview.route) {
-                TemplatePreviewScreen(state = state, actions = actions)
+                TemplatePreviewPageRedesign(state = state, actions = actions)
             }
             composable(BoothRoute.Finish.route) {
-                FinishScreen(
+                FinishPageRedesign(
                     state = state,
                     actions = actions.copy(downloadResult = ::downloadWithStoragePermissionCheck),
                 )
             }
             composable(BoothRoute.Settings.route) {
-                SettingsScreen(state = state, actions = actions)
+                SetupPageRedesign(state = state, actions = actions)
             }
             composable(BoothRoute.LaunchEvent.route) {
-                LaunchEventScreen(
+                LaunchPageRedesign(
                     state = state,
                     launchState = launchState,
                     actions = actions,
                     launchActions = launchActions,
+                    onBackToDashboard = actions.openDashboard,
                 )
             }
             composable(BoothRoute.SettingEvent.route) {
-                SettingEventScreen(
+                EventsPageRedesign(
                     state = state,
                     launchState = launchState,
                     actions = actions,
@@ -401,19 +463,24 @@ fun BoothApp(
                 )
             }
             composable(BoothRoute.SettingAllowedTemplates.route) {
-                AllowedTemplatesScreen(state = state, actions = actions)
+                AllowedTemplatesPageRedesign(state = state, actions = actions)
             }
             composable(BoothRoute.VoucherCheck.route) {
-                VoucherCheckScreen(state = state, actions = actions)
+                VoucherCheckPageRedesign(state = state, actions = actions)
             }
             composable(BoothRoute.PaymentGate.route) {
-                PaymentGateScreen(state = state, actions = actions)
+                PaymentGatePageRedesign(state = state, actions = actions)
             }
             composable(BoothRoute.WaitingApproval.route) {
-                WaitingApprovalScreen(state = state, actions = actions)
+                WaitingApprovalPageRedesign(state = state, actions = actions)
             }
         }
     }
+}
+
+@Composable
+private fun SplashPageRedesign(actions: BoothActions) {
+    SplashScreen(actions = actions)
 }
 
 @Composable
@@ -423,13 +490,33 @@ private fun SplashScreen(actions: BoothActions) {
         actions.continueFromSplash()
     }
     Box(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFFF5F8FF),
+                        Color(0xFFFFF2F8),
+                        Color.White,
+                    ),
+                ),
+            ),
         contentAlignment = Alignment.Center,
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text("Dafydio Booth", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
-            Text("Photobooth station")
-            CircularProgressIndicator()
+        Card(
+            shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.9f)),
+            elevation = CardDefaults.cardElevation(defaultElevation = 10.dp),
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 28.dp, vertical = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Text("Dafydio Booth", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
+                Text("Photobooth station", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                CircularProgressIndicator(color = Color(0xFF5B67FF))
+            }
         }
     }
 }

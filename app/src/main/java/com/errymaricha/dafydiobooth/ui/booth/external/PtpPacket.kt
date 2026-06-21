@@ -15,6 +15,7 @@ object PtpPacket {
     const val OC_GET_OBJECT_INFO = 0x1008
     const val OC_GET_OBJECT = 0x1009
     const val OC_GET_THUMB = 0x100A
+    const val OC_INITIATE_CAPTURE = 0x100E
     const val OC_GET_PARTIAL_OBJECT = 0x101B
     const val OC_EOS_REMOTE_RELEASE_ON = 0x9128
     const val OC_EOS_REMOTE_RELEASE_OFF = 0x9129

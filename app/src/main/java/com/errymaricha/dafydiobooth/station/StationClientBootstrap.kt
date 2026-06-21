@@ -81,7 +81,7 @@ class StationClientBootstrap(private val context: Context) {
     }
 
     fun startHeartbeat() {
-        HeartbeatWorker.enqueue(context)
+        HeartbeatWorker.ensurePeriodic(context)
         OfflineQueueWorker.enqueue(context)
     }
 }

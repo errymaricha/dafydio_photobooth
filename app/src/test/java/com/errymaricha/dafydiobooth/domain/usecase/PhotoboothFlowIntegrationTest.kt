@@ -24,6 +24,7 @@ class PhotoboothFlowIntegrationTest {
             requestPaymentQuote = RequestPaymentQuoteUseCase(repository),
             createSession = CreateSessionUseCase(repository),
             checkPayment = CheckPaymentUseCase(repository),
+            openManualSession = OpenBoothManualSessionUseCase(repository),
             confirmPayment = ConfirmPaymentUseCase(repository),
             uploadCapture = UploadCaptureUseCase(repository),
             refreshTemplates = RefreshTemplatesUseCase(repository),
@@ -144,6 +145,26 @@ private class FakePhotoboothRepository : PhotoboothRepository {
                 canUpload = true,
                 paymentRequired = false,
                 unlockPhoto = true,
+            ),
+        )
+    }
+
+    override suspend fun openManualSession(
+        eventId: String,
+        customerWhatsapp: String?,
+        voucherCode: String,
+        paymentMethod: String,
+        additionalPrintCount: Int,
+    ): BoothResult<BoothSession> {
+        calls += "openManualSession"
+        return BoothResult.Success(
+            BoothSession(
+                sessionId = "session-manual-1",
+                sessionCode = "SES-MAN-001",
+                uploadUrl = "https://upload.example/session-manual-1",
+                paymentStatus = "pending",
+                paymentRequired = true,
+                unlockPhoto = false,
             ),
         )
     }

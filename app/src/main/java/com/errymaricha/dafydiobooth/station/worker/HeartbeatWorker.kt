@@ -6,6 +6,7 @@ import android.content.IntentFilter
 import android.net.wifi.WifiManager
 import android.os.BatteryManager
 import android.os.Build
+import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
@@ -43,7 +44,25 @@ class HeartbeatWorker(
     )
 
     override suspend fun doWork(): Result {
-        val localIp = resolveLocalIp()
+        val previous = statusStore.snapshot()
+        val resolvedLocalIp = resolveLocalIp()
+        val fallbackLocalIp = previous.localIp.takeIf(::isValidIpv4)
+        val localIp = resolvedLocalIp.takeIf(::isValidIpv4) ?: fallbackLocalIp.orEmpty()
+        if (!isValidIpv4(localIp)) {
+            Log.w(
+                TAG,
+                "HeartbeatWorker retry: localIp tidak valid resolved=$resolvedLocalIp previous=${previous.localIp}",
+            )
+            statusStore.save(
+                previous.copy(
+                    localIp = resolvedLocalIp,
+                    appVersion = BuildConfig.VERSION_NAME,
+                    os = "Android ${Build.VERSION.RELEASE}",
+                    capabilities = "camera=true, printer=false, offline_queue=true, local_render=true",
+                ),
+            )
+            return Result.retry()
+        }
         val battery = readBatteryPercent()
         val networkStrength = readNetworkStrength()
         val capabilities = HeartbeatCapabilities(
@@ -65,8 +84,9 @@ class HeartbeatWorker(
             metrics = emptyMap(),
             lastSyncAt = lastSync,
         )
-        return when (deviceRepository.sendHeartbeat(payload)) {
+        return when (val result = deviceRepository.sendHeartbeat(payload)) {
             is AppResult.Success -> {
+                Log.i(TAG, "HeartbeatWorker success localIp=$localIp")
                 statusStore.save(
                     HeartbeatStatus(
                         localIp = localIp,
@@ -76,11 +96,14 @@ class HeartbeatWorker(
                         lastHeartbeatAt = Instant.now().toString(),
                         lastSyncAt = lastSync,
                         lastResult = "success",
+                        lastSuccessAt = Instant.now().toString(),
+                        consecutiveFailures = 0,
                     ),
                 )
                 Result.success()
             }
             is AppResult.Failure -> {
+                Log.w(TAG, "HeartbeatWorker failure localIp=$localIp error=${result.error}")
                 statusStore.save(
                     HeartbeatStatus(
                         localIp = localIp,
@@ -90,11 +113,18 @@ class HeartbeatWorker(
                         lastHeartbeatAt = Instant.now().toString(),
                         lastSyncAt = lastSync,
                         lastResult = "failed",
+                        lastSuccessAt = previous.lastSuccessAt,
+                        consecutiveFailures = previous.consecutiveFailures + 1,
                     ),
                 )
                 Result.retry()
             }
         }
+    }
+
+    private fun isValidIpv4(ip: String): Boolean {
+        val regex = Regex("""^((25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)\.){3}(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)$""")
+        return regex.matches(ip.trim())
     }
 
     private fun resolveLocalIp(): String {
@@ -133,21 +163,36 @@ class HeartbeatWorker(
     }
 
     companion object {
+        private const val TAG = "HeartbeatWorker"
         private const val WORK_NAME = "device_heartbeat_work"
+        private const val IMMEDIATE_WORK_NAME = "${WORK_NAME}_immediate"
 
         fun enqueue(context: Context) {
+            enqueueImmediate(context)
+            ensurePeriodic(context)
+        }
+
+        fun enqueueImmediate(context: Context) {
             val oneTime = OneTimeWorkRequestBuilder<HeartbeatWorker>().build()
             WorkManager.getInstance(context).enqueueUniqueWork(
-                "${WORK_NAME}_immediate",
+                IMMEDIATE_WORK_NAME,
                 ExistingWorkPolicy.REPLACE,
                 oneTime,
             )
+        }
+
+        fun ensurePeriodic(context: Context) {
             val request = PeriodicWorkRequestBuilder<HeartbeatWorker>(15, TimeUnit.MINUTES).build()
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 WORK_NAME,
                 ExistingPeriodicWorkPolicy.UPDATE,
                 request,
             )
+        }
+
+        fun cancel(context: Context) {
+            WorkManager.getInstance(context).cancelUniqueWork(IMMEDIATE_WORK_NAME)
+            WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME)
         }
     }
 }

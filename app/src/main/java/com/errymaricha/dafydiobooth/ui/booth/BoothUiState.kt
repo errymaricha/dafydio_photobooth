@@ -4,6 +4,8 @@ import com.errymaricha.dafydiobooth.domain.model.BoothSession
 import com.errymaricha.dafydiobooth.domain.model.PaymentQuote
 import com.errymaricha.dafydiobooth.domain.model.PaymentStatus
 import com.errymaricha.dafydiobooth.domain.model.VoucherVerification
+import java.time.Duration
+import java.time.Instant
 
 enum class BoothStep {
     Splash,
@@ -42,6 +44,7 @@ data class BoothUiState(
     val launchTemplateSearchQuery: String = "",
     val launchAdditionalPrintCount: Int = 0,
     val paymentMethod: String = "manual",
+    val kioskExitCode: String = "",
     val eventStatusMessage: String? = null,
     val selectedTemplateId: String? = null,
     val selectedTemplate: String? = null,
@@ -64,8 +67,10 @@ data class BoothUiState(
     val nextCaptureIndex: Int = 1,
     val cameraSource: CameraSource = CameraSource.AndroidDefault,
     val externalCameraStatus: ExternalCameraStatus = ExternalCameraStatus.Disconnected,
+    val externalCameraType: String = "-",
     val externalPreviewPath: String? = null,
     val externalPreviewBytes: ByteArray? = null,
+    val externalPreviewFps: Int = 15,
     val mirrorLiveView: Boolean = false,
     val mirrorCapture: Boolean = false,
     val imageQuality: ImageQuality = ImageQuality.High,
@@ -79,6 +84,8 @@ data class BoothUiState(
     val shutterSound: Boolean = true,
     val defaultPrinting: Boolean = true,
     val printUsePhotoboothStation: Boolean = false,
+    val welcomeBgUri: String = "",
+    val welcomeBgIsVideo: Boolean = false,
     val heartbeatLocalIp: String = "-",
     val heartbeatAppVersion: String = "-",
     val heartbeatOsVersion: String = "-",
@@ -86,6 +93,8 @@ data class BoothUiState(
     val heartbeatLastAt: String = "-",
     val heartbeatLastSyncAt: String = "-",
     val heartbeatLastResult: String = "-",
+    val heartbeatLastSuccessAt: String = "-",
+    val consecutiveHeartbeatFailures: Int = 0,
     val voucher: VoucherVerification? = null,
     val quote: PaymentQuote? = null,
     val session: BoothSession? = null,
@@ -94,7 +103,26 @@ data class BoothUiState(
     val mockPrintStatus: MockPrintStatus = MockPrintStatus.Idle,
     val mockPrintMessage: String? = null,
     val errorMessage: String? = null,
-)
+) {
+    val isStationReachable: Boolean
+        get() {
+            if (!isStationConnected) return false
+            return when (heartbeatLastResult.lowercase()) {
+                "failed" -> {
+                    val referenceSuccess = runCatching { Instant.parse(heartbeatLastSuccessAt) }.getOrNull()
+                    consecutiveHeartbeatFailures < 2 &&
+                        referenceSuccess != null &&
+                        Duration.between(referenceSuccess, Instant.now()).abs() <= Duration.ofMinutes(10)
+                }
+                "success" -> {
+                    val lastHeartbeat = runCatching { Instant.parse(heartbeatLastAt) }.getOrNull()
+                    if (lastHeartbeat == null) true
+                    else Duration.between(lastHeartbeat, Instant.now()).abs() <= Duration.ofMinutes(20)
+                }
+                else -> true
+            }
+        }
+}
 
 enum class MockPrintStatus {
     Idle,

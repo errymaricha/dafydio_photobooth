@@ -5,6 +5,12 @@ import org.junit.Test
 
 class LaunchPaymentStatusTest {
     @Test
+    fun `rejected helper recognizes decline and failed variants`() {
+        assertTrue("manual_declined".isRejectedPaymentStatus())
+        assertTrue("payment_failed".isRejectedPaymentStatus())
+    }
+
+    @Test
     fun `status containing reject keyword is treated as rejected`() {
         val status = LaunchPaymentStatus(
             sessionId = "session-1",

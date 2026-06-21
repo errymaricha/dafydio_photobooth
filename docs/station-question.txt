@@ -1,0 +1,50 @@
+Halo, update terbaru dari Android emulator untuk issue template asset.
+
+Status yang sudah confirmed sekarang:
+- device auth OK
+- token OK
+- heartbeat OK
+- master-data OK
+- events OK
+- signed URL asset OK
+- host emulator benar ke `10.0.2.2:8000`
+- runtime yang kami hit sudah mengirim header:
+  `X-Asset-Delivery: binary_file_response`
+
+Kami juga sudah ubah Android menjadi range-only download dari byte 0, tanpa full-body stream.
+
+Hasil terbaru:
+1. metadata range `bytes=0-0` sukses (`206`)
+2. tetapi chunk pertama asset nyata (`c0`, mulai dari byte 0) tetap gagal dengan error:
+   `unexpected end of stream`
+3. ini terjadi pada:
+   - thumbnail
+   - preview
+   - overlay
+
+Artinya sekarang sudah pasti problem bukan lagi di:
+- full download client
+- temp file stale
+- SHA append
+- cache collision
+- retry logic Android
+- auth / signed URL
+
+Masalah sekarang ada di runtime response body untuk partial content / range chunk nyata.
+
+Mohon dicek langsung pada runtime `http://10.0.2.2:8000`:
+1. test `curl` untuk signed URL yang sama dengan range chunk nyata, misalnya:
+   - `Range: bytes=0-262143`
+2. verifikasi apakah chunk download selesai penuh tanpa putus
+3. jika perlu, hitung SHA gabungan beberapa chunk hasil curl
+4. cek apakah runtime/server/proxy memutus response body untuk partial content yang lebih besar dari 1 byte
+5. cek log runtime untuk indikasi:
+   - broken pipe
+   - premature close
+   - bytes sent < expected
+   - client aborted
+
+Catatan penting:
+- `bytes=0-0` berhasil
+- tetapi chunk `c0` nyata gagal
+- jadi masalah ada pada delivery partial content yang lebih besar, bukan pada signed URL, auth, atau client cache Android

@@ -35,6 +35,14 @@ interface PhotoboothRepository {
         customerId: String?,
     ): BoothResult<BoothSession>
 
+    suspend fun openManualSession(
+        eventId: String,
+        customerWhatsapp: String?,
+        voucherCode: String,
+        paymentMethod: String,
+        additionalPrintCount: Int = 0,
+    ): BoothResult<BoothSession>
+
     suspend fun paymentCheck(sessionId: String): BoothResult<PaymentStatus>
 
     suspend fun confirmPayment(

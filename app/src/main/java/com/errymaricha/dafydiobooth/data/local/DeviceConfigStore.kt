@@ -13,6 +13,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 
@@ -33,8 +34,10 @@ data class DeviceConfig(
     val voucherType: String = "regular",
     val sessionType: String = "photo",
     val paymentMethod: String = "manual",
+    val kioskExitCode: String = "",
     val cameraSource: String = "AndroidDefault",
     val externalCameraStatus: String = "Disconnected",
+    val externalPreviewFps: Int = 15,
     val mirrorLiveView: Boolean = false,
     val mirrorCapture: Boolean = false,
     val imageQuality: String = "High",
@@ -46,6 +49,8 @@ data class DeviceConfig(
     val shutterSound: Boolean = true,
     val defaultPrinting: Boolean = true,
     val printUsePhotoboothStation: Boolean = false,
+    val welcomeBgUri: String = "",
+    val welcomeBgIsVideo: Boolean = false,
 )
 
 class DeviceConfigStore(private val context: Context) {
@@ -64,8 +69,10 @@ class DeviceConfigStore(private val context: Context) {
     private val voucherTypeKey = stringPreferencesKey("voucher_type")
     private val sessionTypeKey = stringPreferencesKey("session_type")
     private val paymentMethodKey = stringPreferencesKey("payment_method")
+    private val kioskExitCodeKey = stringPreferencesKey("kiosk_exit_code")
     private val cameraSourceKey = stringPreferencesKey("camera_source")
     private val externalCameraStatusKey = stringPreferencesKey("external_camera_status")
+    private val externalPreviewFpsKey = intPreferencesKey("external_preview_fps")
     private val mirrorLiveViewKey = booleanPreferencesKey("mirror_live_view")
     private val mirrorCaptureKey = booleanPreferencesKey("mirror_capture")
     private val imageQualityKey = stringPreferencesKey("image_quality")
@@ -78,8 +85,13 @@ class DeviceConfigStore(private val context: Context) {
     private val defaultPrintingKey = booleanPreferencesKey("default_printing")
     private val printUsePhotoboothStationKey = booleanPreferencesKey("print_use_photobooth_station")
     private val templatesJsonKey = stringPreferencesKey("templates_json")
+    private val welcomeBgUriKey = stringPreferencesKey("welcome_bg_uri")
+    private val welcomeBgIsVideoKey = booleanPreferencesKey("welcome_bg_is_video")
 
     val config: Flow<DeviceConfig> = context.deviceConfigDataStore.data.map { preferences ->
+        val eventId = preferences[launchSelectedEventIdKey].orEmpty()
+        val welcomeBgUriKeyForEvent = stringPreferencesKey("welcome_bg_uri_$eventId")
+        val welcomeBgIsVideoKeyForEvent = booleanPreferencesKey("welcome_bg_is_video_$eventId")
         DeviceConfig(
             deviceId = preferences[deviceIdKey].orEmpty(),
             token = preferences[tokenKey].orEmpty(),
@@ -95,8 +107,10 @@ class DeviceConfigStore(private val context: Context) {
             voucherType = preferences[voucherTypeKey] ?: "regular",
             sessionType = preferences[sessionTypeKey] ?: "photo",
             paymentMethod = preferences[paymentMethodKey] ?: "manual",
+            kioskExitCode = preferences[kioskExitCodeKey].orEmpty(),
             cameraSource = preferences[cameraSourceKey] ?: "AndroidDefault",
             externalCameraStatus = preferences[externalCameraStatusKey] ?: "Disconnected",
+            externalPreviewFps = preferences[externalPreviewFpsKey] ?: 15,
             mirrorLiveView = preferences[mirrorLiveViewKey] ?: false,
             mirrorCapture = preferences[mirrorCaptureKey] ?: false,
             imageQuality = preferences[imageQualityKey] ?: "High",
@@ -108,6 +122,8 @@ class DeviceConfigStore(private val context: Context) {
             shutterSound = preferences[shutterSoundKey] ?: true,
             defaultPrinting = preferences[defaultPrintingKey] ?: true,
             printUsePhotoboothStation = preferences[printUsePhotoboothStationKey] ?: false,
+            welcomeBgUri = if (eventId.isNotBlank()) preferences[welcomeBgUriKeyForEvent].orEmpty() else preferences[welcomeBgUriKey].orEmpty(),
+            welcomeBgIsVideo = if (eventId.isNotBlank()) (preferences[welcomeBgIsVideoKeyForEvent] ?: false) else (preferences[welcomeBgIsVideoKey] ?: false),
         )
     }
 
@@ -133,6 +149,27 @@ class DeviceConfigStore(private val context: Context) {
         }
     }
 
+    suspend fun loadWelcomeBgForEvent(eventId: String): Pair<String, Boolean> {
+        val preferences = context.deviceConfigDataStore.data.first()
+        val bgUri = if (eventId.isNotBlank()) {
+            preferences[stringPreferencesKey("welcome_bg_uri_$eventId")].orEmpty()
+        } else {
+            preferences[welcomeBgUriKey].orEmpty()
+        }
+        val bgIsVideo = if (eventId.isNotBlank()) {
+            preferences[booleanPreferencesKey("welcome_bg_is_video_$eventId")] ?: false
+        } else {
+            preferences[welcomeBgIsVideoKey] ?: false
+        }
+        return Pair(bgUri, bgIsVideo)
+    }
+
+    suspend fun saveSelectedEventId(eventId: String) {
+        context.deviceConfigDataStore.edit { preferences ->
+            preferences[launchSelectedEventIdKey] = eventId
+        }
+    }
+
     suspend fun save(config: DeviceConfig) {
         context.deviceConfigDataStore.edit { preferences ->
             preferences[deviceIdKey] = config.deviceId
@@ -149,8 +186,10 @@ class DeviceConfigStore(private val context: Context) {
             preferences[voucherTypeKey] = config.voucherType
             preferences[sessionTypeKey] = config.sessionType
             preferences[paymentMethodKey] = config.paymentMethod
+            preferences[kioskExitCodeKey] = config.kioskExitCode
             preferences[cameraSourceKey] = config.cameraSource
             preferences[externalCameraStatusKey] = config.externalCameraStatus
+            preferences[externalPreviewFpsKey] = config.externalPreviewFps.coerceIn(10, 24)
             preferences[mirrorLiveViewKey] = config.mirrorLiveView
             preferences[mirrorCaptureKey] = config.mirrorCapture
             preferences[imageQualityKey] = config.imageQuality
@@ -162,6 +201,16 @@ class DeviceConfigStore(private val context: Context) {
             preferences[shutterSoundKey] = config.shutterSound
             preferences[defaultPrintingKey] = config.defaultPrinting
             preferences[printUsePhotoboothStationKey] = config.printUsePhotoboothStation
+            
+            val eventId = config.launchSelectedEventId
+            if (eventId.isNotBlank()) {
+                val welcomeBgUriKeyForEvent = stringPreferencesKey("welcome_bg_uri_$eventId")
+                val welcomeBgIsVideoKeyForEvent = booleanPreferencesKey("welcome_bg_is_video_$eventId")
+                preferences[welcomeBgUriKeyForEvent] = config.welcomeBgUri
+                preferences[welcomeBgIsVideoKeyForEvent] = config.welcomeBgIsVideo
+            }
+            preferences[welcomeBgUriKey] = config.welcomeBgUri
+            preferences[welcomeBgIsVideoKey] = config.welcomeBgIsVideo
         }
     }
 

@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">DafydioBooth</string>
+    <string name="app_name">Dafydio Booth</string>
     <string name="dashboard_action_start_now_photo">Start Now Photo</string>
     <string name="dashboard_action_create_custom_template">Create Custom Template</string>
     <string name="dashboard_action_list_default_template">List Default Template</string>

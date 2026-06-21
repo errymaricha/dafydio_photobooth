@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.os.Build
 import android.util.Log
 import com.errymaricha.dafydiobooth.BuildConfig
+import com.errymaricha.dafydiobooth.data.station.toStationBaseUrl
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -37,6 +38,17 @@ class TemplateAssetStore(private val context: Context) {
         val success: Boolean,
         val code: Int,
         val message: String,
+    )
+
+    private data class AssetMetadata(
+        val expectedLength: Long,
+        val expectedSha: String?,
+    )
+
+    private data class ParsedContentRange(
+        val start: Long,
+        val end: Long,
+        val total: Long,
     )
 
     private val httpClient = OkHttpClient.Builder()
@@ -134,19 +146,19 @@ class TemplateAssetStore(private val context: Context) {
             val fallbackCachedPath = cachedPath?.let(::File)?.takeIf(::isValidImageFile)?.absolutePath
             val resolvedRequest = resolveAssetRequest(assetUrl, stationBaseUrl) ?: return@synchronized null
             val resolvedUrl = resolvedRequest.downloadUrl
+            val requestAuthToken = if (isSignedAssetUrl(resolvedUrl)) null else authToken
+            val requestId = buildRequestId(templateId, filePrefix, 1, !requestAuthToken.isNullOrBlank())
             val extension = resolvedUrl.substringBefore('?').substringAfterLast('.', "png").lowercase()
             val safeExtension = if (extension.length in 2..6) extension else "png"
             val targetDir = File(context.filesDir, "templates/$templateId")
             if (!targetDir.exists()) targetDir.mkdirs()
+            purgeWorkingFiles(targetDir, filePrefix)
             val targetFile = File(targetDir, "$filePrefix.$safeExtension")
-            val tempFile = File(targetDir, "$filePrefix.tmp")
-            if (tempFile.exists()) runCatching { tempFile.delete() }
-
-            val requestId = buildRequestId(templateId, filePrefix, 1, !authToken.isNullOrBlank())
+            val tempFile = File(targetDir, "$filePrefix-$requestId.tmp")
             val result = downloadAssetWithResume(
                 signedUrl = resolvedUrl,
                 hostHeader = resolvedRequest.hostHeader,
-                authToken = authToken,
+                authToken = requestAuthToken,
                 outFile = tempFile,
                 requestId = requestId,
                 filePrefix = filePrefix,
@@ -195,6 +207,24 @@ class TemplateAssetStore(private val context: Context) {
         maxAttempts: Int = 3,
     ): DownloadResult {
         outFile.parentFile?.mkdirs()
+        if (isSignedAssetUrl(signedUrl)) {
+            val rangeResult = downloadAssetWithChunkedRanges(
+                resolvedUrl = signedUrl,
+                hostHeader = hostHeader,
+                authToken = authToken,
+                outFile = outFile,
+                requestId = requestId,
+                filePrefix = filePrefix,
+                maxAttempts = maxAttempts,
+            )
+            if (rangeResult.success && isValidImageFile(outFile)) {
+                return rangeResult
+            }
+            Log.w(
+                "TemplateAssetStore",
+                "Range-only download failed for signed URL [$filePrefix] code=${rangeResult.code} msg=${rangeResult.message}. Falling back to full download.",
+            )
+        }
         var lastFailure = DownloadResult(false, -1, "Failed after retries")
         repeat(maxAttempts) { index ->
             val attempt = index + 1
@@ -229,6 +259,7 @@ class TemplateAssetStore(private val context: Context) {
                         assetId = response.header("X-Asset-Id"),
                         assetSize = response.header("X-Asset-Size")?.toLongOrNull(),
                         assetSha = response.header("X-Asset-Sha256"),
+                        assetDelivery = response.header("X-Asset-Delivery"),
                         etag = response.header("ETag"),
                         lastModified = response.header("Last-Modified"),
                     )
@@ -281,7 +312,25 @@ class TemplateAssetStore(private val context: Context) {
                     DownloadResult(true, code, "OK")
                 }
             }.getOrElse { error ->
-                DownloadResult(false, -1, error.message ?: "Unknown error")
+                Log.w(
+                    "TemplateAssetStore",
+                    "Primary asset read gagal [$filePrefix] requestId=$requestId attempt=$attempt/$maxAttempts error=${error.message}. Coba fallback streaming.",
+                )
+                val streamedOk = downloadWithUrlConnectionToFile(
+                    resolvedUrl = signedUrl,
+                    hostHeader = hostHeader,
+                    authToken = authToken,
+                    target = outFile,
+                    filePrefix = filePrefix,
+                    requestId = "$requestId-fallback-$attempt",
+                    attempt = attempt,
+                    useAuth = !authToken.isNullOrBlank(),
+                )
+                if (streamedOk && isValidImageFile(outFile)) {
+                    DownloadResult(true, 200, "OK via fallback")
+                } else {
+                    DownloadResult(false, -1, error.message ?: "Unknown error")
+                }
             }
 
             if (result.success) return result
@@ -293,6 +342,62 @@ class TemplateAssetStore(private val context: Context) {
         }
         diagnoseAssetFailure(
             signedUrl = signedUrl,
+            hostHeader = hostHeader,
+            authToken = authToken,
+            filePrefix = filePrefix,
+            requestId = requestId,
+        )
+        return lastFailure
+    }
+
+    private fun downloadAssetWithChunkedRanges(
+        resolvedUrl: String,
+        hostHeader: String?,
+        authToken: String?,
+        outFile: File,
+        requestId: String,
+        filePrefix: String,
+        maxAttempts: Int,
+    ): DownloadResult {
+        outFile.parentFile?.mkdirs()
+        var lastFailure = DownloadResult(false, -1, "Failed after retries")
+        repeat(maxAttempts) { index ->
+            val attempt = index + 1
+            runCatching { if (outFile.exists()) outFile.delete() }
+            val metadata = fetchAssetMetadataByRange(
+                resolvedUrl = resolvedUrl,
+                hostHeader = hostHeader,
+                authToken = authToken,
+                filePrefix = filePrefix,
+                requestId = requestId,
+                attempt = attempt,
+            ) ?: run {
+                lastFailure = DownloadResult(false, -1, "Missing asset metadata from range response")
+                return@repeat
+            }
+            val downloaded = recoverFullWithChunkedRanges(
+                resolvedUrl = resolvedUrl,
+                hostHeader = hostHeader,
+                authToken = authToken,
+                target = outFile,
+                expectedLength = metadata.expectedLength,
+                expectedSha = metadata.expectedSha.orEmpty(),
+                filePrefix = filePrefix,
+                requestId = requestId,
+                useAuth = !authToken.isNullOrBlank(),
+                attempt = attempt,
+            )
+            if (downloaded && isValidImageFile(outFile)) {
+                return DownloadResult(true, 206, "OK via range-only")
+            }
+            lastFailure = DownloadResult(false, -1, "Range-only download failed")
+            runCatching { if (outFile.exists()) outFile.delete() }
+            if (attempt < maxAttempts) {
+                runCatching { Thread.sleep((attempt * 250L)) }
+            }
+        }
+        diagnoseAssetFailure(
+            signedUrl = resolvedUrl,
             hostHeader = hostHeader,
             authToken = authToken,
             filePrefix = filePrefix,
@@ -459,23 +564,10 @@ class TemplateAssetStore(private val context: Context) {
                     if (localSha.isNullOrBlank() || !localSha.equals(expectedSha, ignoreCase = true)) {
                         Log.w(
                             "TemplateAssetStore",
-                            "SHA mismatch [$filePrefix] requestId=$requestId expectedSha=$expectedSha actualSha=${localSha.orEmpty()} url=$resolvedUrl auth=$useAuth attempt=$attempt/$MAX_DOWNLOAD_ATTEMPTS via=okhttp",
+                            "SHA mismatch [$filePrefix] requestId=$requestId expectedSha=$expectedSha actualSha=${localSha.orEmpty()} url=$resolvedUrl auth=$useAuth attempt=$attempt/$MAX_DOWNLOAD_ATTEMPTS via=okhttp. Hapus temp file dan ulang full download.",
                         )
-                        val chunkRecovered = recoverFullWithChunkedRanges(
-                            resolvedUrl = resolvedUrl,
-                            hostHeader = hostHeader,
-                            authToken = authToken,
-                            target = target,
-                            expectedLength = expectedLength ?: target.length(),
-                            expectedSha = expectedSha,
-                            filePrefix = filePrefix,
-                            requestId = requestId,
-                            useAuth = useAuth,
-                            attempt = attempt,
-                        )
-                        if (!chunkRecovered) {
-                            return false
-                        }
+                        runCatching { if (target.exists()) target.delete() }
+                        return false
                     }
                 }
                 if (target.exists() && target.length() > 0L) {
@@ -541,6 +633,7 @@ class TemplateAssetStore(private val context: Context) {
                     assetId = connection.getHeaderField("X-Asset-Id"),
                     assetSize = connection.getHeaderField("X-Asset-Size")?.toLongOrNull(),
                     assetSha = connection.getHeaderField("X-Asset-Sha256"),
+                    assetDelivery = connection.getHeaderField("X-Asset-Delivery"),
                 )
                 val contentType = connection.contentType.orEmpty().lowercase()
                 val expectedLength = connection.contentLengthLong.takeIf { it >= 0L }
@@ -613,23 +706,10 @@ class TemplateAssetStore(private val context: Context) {
                     if (localSha.isNullOrBlank() || !localSha.equals(expectedSha, ignoreCase = true)) {
                         Log.w(
                             "TemplateAssetStore",
-                            "SHA mismatch [$filePrefix] requestId=$requestId expectedSha=$expectedSha actualSha=${localSha.orEmpty()} url=$resolvedUrl auth=$useAuth attempt=$attempt/$MAX_DOWNLOAD_ATTEMPTS via=url-connection",
+                            "SHA mismatch [$filePrefix] requestId=$requestId expectedSha=$expectedSha actualSha=${localSha.orEmpty()} url=$resolvedUrl auth=$useAuth attempt=$attempt/$MAX_DOWNLOAD_ATTEMPTS via=url-connection. Hapus temp file dan ulang full download.",
                         )
-                        val chunkRecovered = recoverFullWithChunkedRanges(
-                            resolvedUrl = resolvedUrl,
-                            hostHeader = hostHeader,
-                            authToken = authToken,
-                            target = target,
-                            expectedLength = expectedLength ?: target.length(),
-                            expectedSha = expectedSha,
-                            filePrefix = filePrefix,
-                            requestId = requestId,
-                            useAuth = useAuth,
-                            attempt = attempt,
-                        )
-                        if (!chunkRecovered) {
-                            return false
-                        }
+                        runCatching { if (target.exists()) target.delete() }
+                        return false
                     }
                 }
             } finally {
@@ -666,6 +746,12 @@ class TemplateAssetStore(private val context: Context) {
         return valid?.absolutePath
     }
 
+    private fun purgeWorkingFiles(targetDir: File, filePrefix: String) {
+        targetDir.listFiles()
+            ?.filter { it.isFile && (it.name.startsWith("$filePrefix-") || it.name == "$filePrefix.tmp" || it.name == "$filePrefix.bak") }
+            ?.forEach { stale -> runCatching { stale.delete() } }
+    }
+
     private fun isValidImageFile(file: File): Boolean {
         if (!file.exists() || file.length() <= 0L) return false
         return runCatching {
@@ -691,12 +777,22 @@ class TemplateAssetStore(private val context: Context) {
     private fun resolveAssetRequest(rawUrl: String, stationBase: String): ResolvedAssetRequest? {
         val trimmed = rawUrl.trim()
         if (trimmed.isBlank()) return null
-        val base = runCatching { URI(stationBase.trim()) }.getOrNull()
+        val normalizedBase = stationBase.toStationBaseUrl()
+        val base = runCatching { URI(normalizedBase) }.getOrNull()
         val uri = runCatching { URI(trimmed) }.getOrNull()
         if (uri?.isAbsolute == true) {
             val host = uri.host?.lowercase()
             val isLocalHost = host == "localhost" || host == "127.0.0.1" || host == "0.0.0.0"
-            if (isLocalHost && base != null && !base.host.isNullOrBlank()) {
+            val shouldRewriteToStationHost = base != null &&
+                !base.host.isNullOrBlank() &&
+                (
+                    isLocalHost ||
+                        (
+                            !host.isNullOrBlank() &&
+                                !host.equals(base.host, ignoreCase = true)
+                        )
+                    )
+            if (shouldRewriteToStationHost) {
                 return runCatching {
                     val rewritten = URI(
                         uri.scheme ?: base.scheme,
@@ -707,10 +803,7 @@ class TemplateAssetStore(private val context: Context) {
                         uri.query,
                         uri.fragment,
                     ).toString()
-                    val hasSignedQuery = uri.rawQuery?.let { query ->
-                        query.contains("signature=") && query.contains("expires=")
-                    } == true
-                    val originalHostHeader = if (hasSignedQuery) {
+                    val originalHostHeader = if (!uri.host.isNullOrBlank()) {
                         if (uri.port != -1) "${uri.host}:${uri.port}" else uri.host
                     } else {
                         null
@@ -722,6 +815,12 @@ class TemplateAssetStore(private val context: Context) {
         }
         if (base == null) return null
         return runCatching { ResolvedAssetRequest(downloadUrl = base.resolve(trimmed).toString()) }.getOrNull()
+    }
+
+    private fun isSignedAssetUrl(url: String): Boolean {
+        val uri = runCatching { URI(url) }.getOrNull() ?: return false
+        val query = uri.rawQuery.orEmpty()
+        return query.contains("signature=") && query.contains("expires=")
     }
 
     private fun computeShortHash(file: File): String {
@@ -782,12 +881,13 @@ class TemplateAssetStore(private val context: Context) {
         assetId: String?,
         assetSize: Long?,
         assetSha: String?,
+        assetDelivery: String? = null,
         etag: String? = null,
         lastModified: String? = null,
     ) {
         Log.i(
             "TemplateAssetStore",
-            "Header asset [$filePrefix] requestId=$requestId code=$responseCode contentLength=${contentLength ?: -1} xAssetId=${assetId.orEmpty()} xAssetSize=${assetSize ?: -1} xAssetSha=${assetSha.orEmpty()} etag=${etag.orEmpty()} lastModified=${lastModified.orEmpty()} url=$resolvedUrl auth=$useAuth attempt=$attempt/$MAX_DOWNLOAD_ATTEMPTS via=$transport userAgent=${buildAssetUserAgent()}",
+            "Header asset [$filePrefix] requestId=$requestId code=$responseCode contentLength=${contentLength ?: -1} xAssetId=${assetId.orEmpty()} xAssetSize=${assetSize ?: -1} xAssetSha=${assetSha.orEmpty()} xAssetDelivery=${assetDelivery.orEmpty()} etag=${etag.orEmpty()} lastModified=${lastModified.orEmpty()} url=$resolvedUrl auth=$useAuth attempt=$attempt/$MAX_DOWNLOAD_ATTEMPTS via=$transport userAgent=${buildAssetUserAgent()}",
         )
     }
 
@@ -851,6 +951,94 @@ class TemplateAssetStore(private val context: Context) {
                 "Diagnose asset gagal [$filePrefix] requestId=$requestId url=$diagnoseUrl error=${error.message}",
             )
         }
+    }
+
+    private fun fetchAssetMetadataByRange(
+        resolvedUrl: String,
+        hostHeader: String?,
+        authToken: String?,
+        filePrefix: String,
+        requestId: String,
+        attempt: Int,
+    ): AssetMetadata? {
+        val metadataRequestId = "$requestId-meta-a$attempt"
+        val requestBuilder = Request.Builder()
+            .url(resolvedUrl)
+            .header("Accept", "image/png")
+            .header("Accept-Encoding", "identity")
+            .header("Connection", "close")
+            .header("Cache-Control", "no-cache")
+            .header("User-Agent", buildAssetUserAgent())
+            .header("X-Debug-Client", "android-template-sync")
+            .header("X-Debug-Req-Id", metadataRequestId)
+            .header("Range", "bytes=0-0")
+        if (!hostHeader.isNullOrBlank()) requestBuilder.header("Host", hostHeader)
+        if (!authToken.isNullOrBlank()) requestBuilder.header("Authorization", "Bearer ${authToken.trim()}")
+
+        return runCatching {
+            httpClient.newCall(requestBuilder.build()).execute().use { response ->
+                val code = response.code
+                val contentRange = response.header("Content-Range").orEmpty()
+                if (code != 206) {
+                    Log.w(
+                        "TemplateAssetStore",
+                        "Metadata range gagal [$filePrefix] requestId=$metadataRequestId code=$code contentRange=$contentRange url=$resolvedUrl",
+                    )
+                    return@use null
+                }
+                logResponseDiagnostics(
+                    filePrefix = filePrefix,
+                    requestId = metadataRequestId,
+                    responseCode = code,
+                    resolvedUrl = resolvedUrl,
+                    useAuth = !authToken.isNullOrBlank(),
+                    attempt = attempt,
+                    transport = "range-metadata",
+                    contentLength = response.header("Content-Length")?.toLongOrNull(),
+                    assetId = response.header("X-Asset-Id"),
+                    assetSize = response.header("X-Asset-Size")?.toLongOrNull(),
+                    assetSha = response.header("X-Asset-Sha256"),
+                    assetDelivery = response.header("X-Asset-Delivery"),
+                    etag = response.header("ETag"),
+                    lastModified = response.header("Last-Modified"),
+                )
+                response.body?.close()
+                val expectedLength = response.header("X-Asset-Size")?.toLongOrNull()
+                    ?: parseTotalLengthFromContentRange(contentRange)
+                if (expectedLength == null || expectedLength <= 0L) {
+                    Log.w(
+                        "TemplateAssetStore",
+                        "Metadata range tanpa ukuran valid [$filePrefix] requestId=$metadataRequestId contentRange=$contentRange url=$resolvedUrl",
+                    )
+                    return@use null
+                }
+                AssetMetadata(
+                    expectedLength = expectedLength,
+                    expectedSha = response.header("X-Asset-Sha256")?.trim()?.lowercase()?.takeIf { it.isNotBlank() },
+                )
+            }
+        }.onFailure { error ->
+            Log.w(
+                "TemplateAssetStore",
+                "Metadata range exception [$filePrefix] requestId=$metadataRequestId url=$resolvedUrl error=${error.message}",
+            )
+        }.getOrNull()
+    }
+
+    private fun parseTotalLengthFromContentRange(contentRange: String): Long? {
+        val total = contentRange.substringAfter('/', "").trim()
+        return total.toLongOrNull()
+    }
+
+    private fun parseContentRangeHeader(contentRange: String): ParsedContentRange? {
+        val cleaned = contentRange.trim()
+        if (!cleaned.startsWith("bytes ")) return null
+        val rangePart = cleaned.removePrefix("bytes ").substringBefore('/').trim()
+        val totalPart = cleaned.substringAfter('/', "").trim()
+        val start = rangePart.substringBefore('-', "").trim().toLongOrNull() ?: return null
+        val end = rangePart.substringAfter('-', "").trim().toLongOrNull() ?: return null
+        val total = totalPart.toLongOrNull() ?: return null
+        return ParsedContentRange(start = start, end = end, total = total)
     }
 
     private fun tryRecoverWithRange(
@@ -958,18 +1146,21 @@ class TemplateAssetStore(private val context: Context) {
         authToken: String?,
         target: File,
         expectedLength: Long,
-        expectedSha: String,
+        expectedSha: String?,
         filePrefix: String,
         requestId: String,
         useAuth: Boolean,
         attempt: Int,
     ): Boolean {
-        val chunkSize = 32L * 1024L
+        val chunkSize = 64L * 1024L
         runCatching { if (target.exists()) target.delete() }
         var offset = 0L
         while (offset < expectedLength) {
             val end = minOf(offset + chunkSize - 1L, expectedLength - 1L)
             val chunkRequestId = "$requestId-c${offset}"
+            val expectedChunkLength = end - offset + 1L
+            val chunkFile = File(target.parentFile, "${target.nameWithoutExtension}-$chunkRequestId.part")
+            runCatching { if (chunkFile.exists()) chunkFile.delete() }
             val requestBuilder = Request.Builder()
                 .url(resolvedUrl)
                 .header("Accept", "image/png")
@@ -988,14 +1179,33 @@ class TemplateAssetStore(private val context: Context) {
             }
             val chunkOk = runCatching {
                 httpClient.newCall(requestBuilder.build()).execute().use { response ->
-                    if (response.code != 206) {
+                    val code = response.code
+                    val contentLength = response.header("Content-Length")?.toLongOrNull()
+                    val contentRange = response.header("Content-Range").orEmpty()
+                    val parsedRange = parseContentRangeHeader(contentRange)
+                    if (code != 206) {
                         Log.w(
                             "TemplateAssetStore",
-                            "Chunk range gagal [$filePrefix] requestId=$chunkRequestId code=${response.code} expectedRange=bytes $offset-$end/$expectedLength",
+                            "Chunk range gagal [$filePrefix] requestId=$chunkRequestId code=$code expectedRange=bytes $offset-$end/$expectedLength",
                         )
                         return@use false
                     }
-                    FileOutputStream(target, true).use { output ->
+                    if (contentLength != expectedChunkLength) {
+                        Log.w(
+                            "TemplateAssetStore",
+                            "Chunk length mismatch [$filePrefix] requestId=$chunkRequestId expected=$expectedChunkLength actual=${contentLength ?: -1}",
+                        )
+                        return@use false
+                    }
+                    if (parsedRange == null || parsedRange.start != offset || parsedRange.end != end || parsedRange.total != expectedLength) {
+                        Log.w(
+                            "TemplateAssetStore",
+                            "Chunk content-range mismatch [$filePrefix] requestId=$chunkRequestId expected=$offset-$end/$expectedLength actual=$contentRange",
+                        )
+                        return@use false
+                    }
+                    var actualRead = 0L
+                    FileOutputStream(chunkFile, false).use { output ->
                         response.body.byteStream().use { input ->
                             val buffer = ByteArray(8 * 1024)
                             while (true) {
@@ -1003,10 +1213,24 @@ class TemplateAssetStore(private val context: Context) {
                                 if (read < 0) break
                                 if (read == 0) continue
                                 output.write(buffer, 0, read)
+                                actualRead += read.toLong()
                             }
                         }
                         output.flush()
                     }
+                    if (actualRead != expectedChunkLength || !chunkFile.exists() || chunkFile.length() != expectedChunkLength) {
+                        Log.w(
+                            "TemplateAssetStore",
+                            "Chunk read mismatch [$filePrefix] requestId=$chunkRequestId expected=$expectedChunkLength actualRead=$actualRead fileLength=${chunkFile.length()}",
+                        )
+                        runCatching { if (chunkFile.exists()) chunkFile.delete() }
+                        return@use false
+                    }
+                    FileOutputStream(target, true).use { output ->
+                        chunkFile.inputStream().use { input -> input.copyTo(output) }
+                        output.flush()
+                    }
+                    runCatching { if (chunkFile.exists()) chunkFile.delete() }
                     true
                 }
             }.onFailure { error ->
@@ -1014,15 +1238,18 @@ class TemplateAssetStore(private val context: Context) {
                     "TemplateAssetStore",
                     "Chunk range exception [$filePrefix] requestId=$chunkRequestId error=${error.message}",
                 )
+                runCatching { if (chunkFile.exists()) chunkFile.delete() }
             }.getOrDefault(false)
             if (!chunkOk) {
+                runCatching { if (chunkFile.exists()) chunkFile.delete() }
                 return false
             }
             offset = end + 1L
         }
         val finalLength = target.length()
         val finalSha = computeSha256(target)
-        val ok = finalLength == expectedLength && finalSha.equals(expectedSha, ignoreCase = true)
+        val shaOk = expectedSha.isNullOrBlank() || finalSha.equals(expectedSha, ignoreCase = true)
+        val ok = finalLength == expectedLength && shaOk
         if (ok) {
             Log.i(
                 "TemplateAssetStore",
@@ -1031,9 +1258,10 @@ class TemplateAssetStore(private val context: Context) {
         } else {
             Log.w(
                 "TemplateAssetStore",
-                "Chunked range recovery gagal [$filePrefix] requestId=$requestId finalLength=$finalLength expectedLength=$expectedLength finalSha=${finalSha.orEmpty()} expectedSha=$expectedSha url=$resolvedUrl auth=$useAuth attempt=$attempt/$MAX_DOWNLOAD_ATTEMPTS",
+                "Chunked range recovery gagal [$filePrefix] requestId=$requestId finalLength=$finalLength expectedLength=$expectedLength finalSha=${finalSha.orEmpty()} expectedSha=${expectedSha.orEmpty()} url=$resolvedUrl auth=$useAuth attempt=$attempt/$MAX_DOWNLOAD_ATTEMPTS",
             )
         }
         return ok
     }
 }
+

@@ -12,7 +12,8 @@ data class SessionState(
     val deviceId: String = "",
     val apiKey: String = "",
     val authToken: String = "",
-    val isStationConnected: Boolean = false,
+    val isStationAuthenticated: Boolean = false,
+    val isStationReachable: Boolean = false,
     val customerId: String = "",
     val customerWhatsapp: String = "",
     val selectedEventId: String = "",
@@ -35,6 +36,7 @@ class SessionStateManager {
         deviceId: String,
         apiKey: String,
         authToken: String,
+        isStationReachable: Boolean = false,
     ) {
         _state.update {
             it.copy(
@@ -42,8 +44,15 @@ class SessionStateManager {
                 deviceId = deviceId,
                 apiKey = apiKey,
                 authToken = authToken,
-                isStationConnected = authToken.isNotBlank(),
+                isStationAuthenticated = authToken.isNotBlank(),
+                isStationReachable = isStationReachable,
             )
+        }
+    }
+
+    fun updateReachability(isStationReachable: Boolean) {
+        _state.update {
+            it.copy(isStationReachable = isStationReachable)
         }
     }
 
@@ -76,7 +85,7 @@ class SessionStateManager {
                 ?: it.customerId.ifBlank { buildFallbackCustomerId(customerWhatsapp) }
             it.copy(
                 authToken = resolvedToken,
-                isStationConnected = resolvedToken.isNotBlank(),
+                isStationAuthenticated = resolvedToken.isNotBlank(),
                 customerId = resolvedCustomerId,
                 customerWhatsapp = customerWhatsapp,
                 selectedEventId = selectedEventId.ifBlank { it.selectedEventId },

@@ -29,6 +29,18 @@ class CanonUsbController(context: Context) {
         return canon
     }
 
+    fun describeCamera(device: UsbDevice?): String {
+        if (device == null) return "-"
+        val productName = device.productName?.takeIf { it.isNotBlank() }
+        val modelFromDictionary = CANON_PRODUCT_DICTIONARY[device.productId]
+        if (modelFromDictionary != null) return modelFromDictionary
+        if (device.vendorId == CANON_VENDOR_ID) {
+            val generic = productName?.contains("digital camera", ignoreCase = true) == true
+            if (generic) return "Canon EOS 1200D"
+        }
+        return productName ?: "Canon USB"
+    }
+
     fun hasPermission(device: UsbDevice): Boolean = usbManager.hasPermission(device)
 
     fun requestPermission(device: UsbDevice) {
@@ -114,5 +126,16 @@ class CanonUsbController(context: Context) {
     private companion object {
         const val ACTION_USB_PERMISSION = "com.errymaricha.dafydiobooth.USB_PERMISSION"
         const val CANON_VENDOR_ID = 0x04A9
+        val CANON_PRODUCT_DICTIONARY = mapOf(
+            0x3222 to "Canon EOS 1200D",
+            0x3218 to "Canon EOS 1100D",
+            0x327a to "Canon EOS 1500D / 2000D",
+            0x3199 to "Canon EOS 700D",
+            0x319b to "Canon EOS 650D",
+            0x319a to "Canon EOS 100D",
+            0x32a1 to "Canon EOS 3000D / 4000D",
+            0x31ef to "Canon EOS 5D Mark III",
+            0x31f4 to "Canon EOS 6D",
+        )
     }
 }

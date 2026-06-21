@@ -8,8 +8,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.errymaricha.dafydiobooth.data.api.ApiClient
 import com.errymaricha.dafydiobooth.data.local.DeviceConfigStore
+import com.errymaricha.dafydiobooth.ui.booth.LaunchActions
 import com.errymaricha.dafydiobooth.data.local.TemplateAssetStore
 import com.errymaricha.dafydiobooth.data.local.TemplateSqliteStore
 import com.errymaricha.dafydiobooth.data.repository.ApiPhotoboothRepository
@@ -26,12 +30,14 @@ import com.errymaricha.dafydiobooth.domain.usecase.CreateEditJobUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.CreateSessionUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.ListLaunchEventsUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.OpenManualSessionUseCase
+import com.errymaricha.dafydiobooth.domain.usecase.OpenBoothManualSessionUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.PhotoboothUseCases
 import com.errymaricha.dafydiobooth.domain.usecase.PrepareLaunchUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.RequestPaymentQuoteUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.RequestLaunchPaymentQuoteUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.RefreshTemplatesUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.RenderSessionUseCase
+import com.errymaricha.dafydiobooth.domain.usecase.SyncLaunchPricingUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.UploadRenderedOutputUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.UploadCaptureUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.UpdateLaunchEventUseCase
@@ -51,6 +57,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        // Hide system bars (status bar & navigation bar) for immersive full screen
+        val windowInsetsController = WindowCompat.getInsetsController(window, window.decorView)
+        windowInsetsController.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        windowInsetsController.hide(WindowInsetsCompat.Type.systemBars())
+
         val configStore = DeviceConfigStore(applicationContext)
         val stationBootstrap = (application as DafydioApplication).stationBootstrap
         val templateSqliteStore = TemplateSqliteStore(applicationContext)
@@ -64,6 +75,7 @@ class MainActivity : ComponentActivity() {
                     deviceId = config.deviceId,
                     apiKey = config.token,
                     authToken = config.authToken,
+                    isStationReachable = false,
                 )
             }
         }
@@ -80,6 +92,7 @@ class MainActivity : ComponentActivity() {
             requestPaymentQuote = RequestPaymentQuoteUseCase(repository),
             createSession = CreateSessionUseCase(repository),
             checkPayment = CheckPaymentUseCase(repository),
+            openManualSession = OpenBoothManualSessionUseCase(repository),
             confirmPayment = ConfirmPaymentUseCase(repository),
             uploadCapture = UploadCaptureUseCase(repository),
             refreshTemplates = RefreshTemplatesUseCase(repository),
@@ -103,6 +116,7 @@ class MainActivity : ComponentActivity() {
         )
         val launchFactory = LaunchViewModelFactory(
             prepareLaunch = PrepareLaunchUseCase(launchRepository),
+            syncLaunchPricing = SyncLaunchPricingUseCase(launchRepository),
             listLaunchEvents = ListLaunchEventsUseCase(launchRepository),
             createLaunchEvent = CreateLaunchEventUseCase(launchRepository),
             updateLaunchEvent = UpdateLaunchEventUseCase(launchRepository),

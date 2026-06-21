@@ -10,11 +10,13 @@ import com.errymaricha.dafydiobooth.domain.usecase.ListLaunchEventsUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.OpenManualSessionUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.PrepareLaunchUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.RequestLaunchPaymentQuoteUseCase
+import com.errymaricha.dafydiobooth.domain.usecase.SyncLaunchPricingUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.UpdateLaunchEventUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.VerifyLaunchVoucherUseCase
 
 class LaunchViewModelFactory(
     private val prepareLaunch: PrepareLaunchUseCase,
+    private val syncLaunchPricing: SyncLaunchPricingUseCase,
     private val listLaunchEvents: ListLaunchEventsUseCase,
     private val createLaunchEvent: CreateLaunchEventUseCase,
     private val updateLaunchEvent: UpdateLaunchEventUseCase,
@@ -30,6 +32,7 @@ class LaunchViewModelFactory(
         if (modelClass.isAssignableFrom(LaunchViewModel::class.java)) {
             return LaunchViewModel(
                 prepareLaunch = prepareLaunch,
+                syncLaunchPricing = syncLaunchPricing,
                 listLaunchEvents = listLaunchEvents,
                 createLaunchEvent = createLaunchEvent,
                 updateLaunchEvent = updateLaunchEvent,

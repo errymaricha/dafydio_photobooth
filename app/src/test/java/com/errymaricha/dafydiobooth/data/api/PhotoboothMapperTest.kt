@@ -135,4 +135,27 @@ class PhotoboothMapperTest {
         assertEquals(false, domain.canUpload)
         assertEquals(false, domain.unlockPhoto)
     }
+
+    @Test
+    fun `payment check maps review approval and rejection reason`() {
+        val response = PaymentCheckResponse(
+            contractVersion = "2026-04-17",
+            sessionId = "session-rejected",
+            sessionCode = "SES-REJ-01",
+            paymentStatus = "pending",
+            reviewStatus = "rejected",
+            approvalStatus = "manual_payment_rejected",
+            rejectReason = "Bukti transfer tidak valid",
+            paymentRequired = true,
+            canUpload = false,
+            unlockPhoto = false,
+        )
+
+        val domain = response.toDomain()
+
+        assertEquals("rejected", domain.reviewStatus)
+        assertEquals("manual_payment_rejected", domain.approvalStatus)
+        assertEquals("Bukti transfer tidak valid", domain.rejectionReason)
+        assertEquals(false, domain.canUpload)
+    }
 }
