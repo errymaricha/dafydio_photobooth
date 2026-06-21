@@ -54,6 +54,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -587,17 +589,51 @@ private fun SplashScreen(actions: BoothActions) {
                 contentAlignment = Alignment.Center
             ) {
                 if (phase == 1 || phase == 3) {
-                    Image(
-                        painter = painterResource(R.drawable.dafydio_logo),
-                        contentDescription = "Dafydio Logo",
+                    Box(
                         modifier = Modifier
+                            .size(180.dp)
                             .graphicsLayer {
                                 scaleX = logoScale.value
                                 scaleY = logoScale.value
                                 alpha = if (phase == 3) contentAlpha.value else 1f
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Canvas(modifier = Modifier.fillMaxSize()) {
+                            // Track Circle
+                            drawCircle(
+                                color = Color.White.copy(alpha = 0.08f),
+                                radius = size.minDimension / 2f - 4.dp.toPx(),
+                                style = Stroke(width = 4.dp.toPx())
+                            )
+                            
+                            // Circular Progress Arc
+                            if (phase == 3) {
+                                val strokeWidth = 5.dp.toPx()
+                                val arcSize = size.minDimension - (strokeWidth * 2)
+                                drawArc(
+                                    brush = Brush.sweepGradient(
+                                        colors = listOf(
+                                            Color(0xFF5B67FF),
+                                            Color(0xFF8B5CF6),
+                                            Color(0xFF5B67FF)
+                                        )
+                                    ),
+                                    startAngle = -90f,
+                                    sweepAngle = loadingProgress.value * 360f,
+                                    useCenter = false,
+                                    topLeft = Offset(strokeWidth, strokeWidth),
+                                    size = androidx.compose.ui.geometry.Size(arcSize, arcSize),
+                                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                                )
                             }
-                            .size(140.dp)
-                    )
+                        }
+                        Image(
+                            painter = painterResource(R.drawable.dafydio_logo),
+                            contentDescription = "Dafydio Logo",
+                            modifier = Modifier.size(130.dp)
+                        )
+                    }
                 }
                 
                 if (phase == 2) {
@@ -667,40 +703,32 @@ private fun SplashScreen(actions: BoothActions) {
                     }
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "Dafydio Booth",
-                            style = MaterialTheme.typography.headlineLarge,
-                            fontWeight = FontWeight.Black,
-                            color = Color.White
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Text(
+                                text = "Dafydio ",
+                                style = MaterialTheme.typography.headlineLarge,
+                                fontWeight = FontWeight.Black,
+                                color = Color.White
+                            )
+                            Text(
+                                text = "Booth",
+                                style = MaterialTheme.typography.headlineLarge.copy(
+                                    brush = Brush.linearGradient(
+                                        colors = listOf(Color(0xFF5B67FF), Color(0xFF8B5CF6))
+                                    )
+                                ),
+                                fontWeight = FontWeight.Black
+                            )
+                        }
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = "Premium Photobooth Station",
                             style = MaterialTheme.typography.bodyMedium,
                             color = Color.White.copy(alpha = 0.6f),
                             fontWeight = FontWeight.Medium
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Loading progress bar
-                    Box(
-                        modifier = Modifier
-                            .width(200.dp)
-                            .height(6.dp)
-                            .clip(RoundedCornerShape(999.dp))
-                            .background(Color.White.copy(alpha = 0.15f))
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxHeight()
-                                .fillMaxWidth(loadingProgress.value)
-                                .background(
-                                    Brush.horizontalGradient(
-                                        colors = listOf(Color(0xFF5B67FF), Color(0xFF8B5CF6))
-                                    )
-                                )
                         )
                     }
                 }
