@@ -887,6 +887,7 @@ fun TemplateSurface(state: BoothUiState) {
                 val h = frameHeight * (slot.height.toFloat() / canvasHeight.toFloat())
                 val r = frameWidth * (slot.borderRadius.toFloat() / canvasWidth.toFloat())
                 val photoPath = state.capturedPhotosBySlot[slot.sourceSlotIndex]
+                    ?: if (slot.sourceSlotIndex == state.nextCaptureIndex) state.capturedPhotoPath else null
                 if (photoPath != null) {
                     AsyncImage(
                         model = File(photoPath),
