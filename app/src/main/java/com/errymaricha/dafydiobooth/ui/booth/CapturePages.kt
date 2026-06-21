@@ -97,11 +97,11 @@ fun CapturePreviewScreen(state: BoothUiState, actions: BoothActions) {
                         ) {
                             CapturePreviewCanvasCard(
                                 state = state,
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.weight(1.2f),
                             )
                             CapturePreviewInfoCard(
                                 state = state,
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.weight(0.8f),
                             )
                         }
                     } else {
