@@ -265,63 +265,6 @@ private fun CapturePreviewCanvasCard(
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun CapturePreviewInfoCard(
-    state: BoothUiState,
-    modifier: Modifier = Modifier,
-) {
-    Card(
-        modifier = modifier,
-        shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xF5FFFFFF)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(Color(0xFFF4F7FF), Color.White, Color(0xFFFFF4F9)),
-                    ),
-                )
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = "Canvas Preview",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF1E2144)
-                )
-                Surface(
-                    shape = RoundedCornerShape(999.dp),
-                    color = Color(0xFF5B67FF).copy(alpha = 0.12f)
-                ) {
-                    Text(
-                        text = state.selectedTemplatePaperSize ?: "-",
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = Color(0xFF5B67FF),
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
-            }
-            Text(
-                text = "Desain akhir cetak dengan template overlay aktif. Pastikan posisi foto pas sebelum dilanjutkan.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            
-            TemplateSurface(state)
             
             Spacer(modifier = Modifier.height(4.dp))
             
@@ -431,6 +374,62 @@ private fun CapturePreviewInfoCard(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun CapturePreviewInfoCard(
+    state: BoothUiState,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(28.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xF5FFFFFF)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(Color(0xFFF4F7FF), Color.White, Color(0xFFFFF4F9)),
+                    ),
+                )
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Canvas Preview",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1E2144)
+                )
+                Surface(
+                    shape = RoundedCornerShape(999.dp),
+                    color = Color(0xFF5B67FF).copy(alpha = 0.12f)
+                ) {
+                    Text(
+                        text = state.selectedTemplatePaperSize ?: "-",
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Color(0xFF5B67FF),
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+            Text(
+                text = "Desain akhir cetak dengan template overlay aktif. Pastikan posisi foto pas sebelum dilanjutkan.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            TemplateSurface(state)
         }
     }
 }
