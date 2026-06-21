@@ -24,10 +24,17 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import coil3.compose.AsyncImage
+import java.io.File
 import com.errymaricha.dafydiobooth.ui.launch.CaptureFinishedScreen
 import com.errymaricha.dafydiobooth.ui.launch.PhotoTemplate
 
@@ -77,13 +84,13 @@ fun CapturePreviewScreen(state: BoothUiState, actions: BoothActions) {
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
-                    CapturePreviewInfoCard(
-                        state = state,
-                        modifier = Modifier.weight(0.82f),
-                    )
                     CapturePreviewCanvasCard(
                         state = state,
                         modifier = Modifier.weight(1.18f),
+                    )
+                    CapturePreviewInfoCard(
+                        state = state,
+                        modifier = Modifier.weight(0.82f),
                     )
                 }
             } else {
@@ -137,19 +144,26 @@ private fun CapturePreviewCanvasCard(
                 .fillMaxWidth()
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(Color(0xFFF4F7FF), Color.White, Color(0xFFFFF5FA)),
+                        colors = listOf(Color(0xFFF4F7FF), Color.White),
                     ),
                 )
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Preview Capture", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Surface(shape = RoundedCornerShape(999.dp), color = Color(0xFF5B67FF).copy(alpha = 0.12f)) {
+                Text(
+                    text = "Hasil Capture",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Surface(
+                    shape = RoundedCornerShape(999.dp),
+                    color = Color(0xFF5B67FF).copy(alpha = 0.12f)
+                ) {
                     Text(
                         text = "Slot ${state.nextCaptureIndex}/${state.templateSlotCount}",
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
@@ -159,14 +173,68 @@ private fun CapturePreviewCanvasCard(
                     )
                 }
             }
+            
+            // Polaroid-style print frame
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(Color.White, RoundedCornerShape(22.dp))
-                    .border(1.dp, Color(0x225B67FF), RoundedCornerShape(22.dp))
-                    .padding(10.dp),
+                    .border(1.dp, Color(0x155B67FF), RoundedCornerShape(22.dp))
+                    .padding(14.dp),
+                contentAlignment = Alignment.Center
             ) {
-                CapturedPhotoSurface(state)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.White)
+                        .padding(bottom = 6.dp)
+                ) {
+                    val path = state.capturedPhotoPath
+                    if (path != null) {
+                        AsyncImage(
+                            model = File(path),
+                            contentDescription = "Captured Photo",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(380.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .border(1.dp, Color(0x105B67FF), RoundedCornerShape(12.dp))
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(380.dp)
+                                .background(Color(0xFFF3F4F6), RoundedCornerShape(12.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("Foto tidak ditemukan", color = Color.Gray)
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(14.dp))
+                    
+                    // Footer details inside Polaroid
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = state.capturedPhotoName ?: "Belum ada nama file",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.Gray,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = "DAFYDIO BOOTH",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFF5B67FF).copy(alpha = 0.6f),
+                            fontWeight = FontWeight.Black
+                        )
+                    }
+                }
             }
         }
     }
@@ -192,11 +260,11 @@ private fun CapturePreviewInfoCard(
                     ),
                 )
                 .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Text("Quick Review", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("Quick Review (Overlay)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text(
-                text = "Overlay template aktif ditampilkan di sini untuk cek posisi dan area aman sebelum lanjut.",
+                text = "Desain akhir cetak dengan template overlay aktif. Pastikan posisi foto pas sebelum dilanjutkan.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -204,7 +272,7 @@ private fun CapturePreviewInfoCard(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(220.dp)
+                        .height(320.dp)
                         .padding(10.dp),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -224,30 +292,112 @@ private fun CapturePreviewInfoCard(
                     }
                 }
             }
-            Text(
-                text = state.capturedPhotoName ?: "Belum ada nama file",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            
+            Spacer(modifier = Modifier.height(4.dp))
+            
+            // Dynamic Interactive Slot Row
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 repeat(state.templateSlotCount.coerceAtMost(4)) { index ->
                     val active = index == (state.nextCaptureIndex - 1).coerceAtLeast(0)
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(68.dp)
-                            .background(
-                                if (active) Color(0xFF5B67FF).copy(alpha = 0.16f) else Color.White.copy(alpha = 0.9f),
-                                RoundedCornerShape(16.dp),
+                    val photoPath = if (active) {
+                        state.capturedPhotoPath
+                    } else {
+                        state.capturedPhotosBySlot[index + 1]
+                    }
+                    
+                    if (photoPath != null) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(80.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .border(
+                                    width = if (active) 2.dp else 1.dp,
+                                    color = if (active) Color(0xFF5B67FF) else Color(0x335B67FF),
+                                    shape = RoundedCornerShape(16.dp)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            AsyncImage(
+                                model = File(photoPath),
+                                contentDescription = "Slot ${index + 1}",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
                             )
-                            .border(
-                                1.dp,
-                                if (active) Color(0xFF5B67FF) else Color(0x225B67FF),
-                                RoundedCornerShape(16.dp),
-                            ),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text("Frame ${index + 1}", style = MaterialTheme.typography.labelMedium, color = if (active) Color(0xFF5B67FF) else MaterialTheme.colorScheme.onSurfaceVariant)
+                            // Dim overlay
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color.Black.copy(alpha = 0.3f))
+                            )
+                            // Label number
+                            Text(
+                                text = "${index + 1}",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            
+                            // Checkmark badge for completed accepted slots
+                            if (index < state.nextCaptureIndex - 1) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(20.dp)
+                                        .align(Alignment.TopEnd)
+                                        .offset(x = (-4).dp, y = 4.dp)
+                                        .background(Color(0xFF10B981), RoundedCornerShape(999.dp)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "✓",
+                                        color = Color.White,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                            
+                            // Active status badge
+                            if (active) {
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .padding(bottom = 4.dp)
+                                        .background(Color(0xFF5B67FF), RoundedCornerShape(6.dp))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "PREVIEW",
+                                        color = Color.White,
+                                        style = androidx.compose.ui.text.TextStyle(
+                                            fontSize = 8.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        // Empty slot placeholder
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(80.dp)
+                                .background(Color.White.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                                .border(
+                                    width = 1.dp,
+                                    color = Color(0x155B67FF),
+                                    shape = RoundedCornerShape(16.dp)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "${index + 1}",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = Color.Gray.copy(alpha = 0.4f),
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }
