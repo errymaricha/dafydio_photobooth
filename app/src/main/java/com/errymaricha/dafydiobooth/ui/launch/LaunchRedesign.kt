@@ -77,6 +77,16 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameMillis
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.Icon
+import androidx.compose.ui.graphics.drawscope.rotate
 import com.errymaricha.dafydiobooth.domain.model.BoothSession
 import com.errymaricha.dafydiobooth.domain.model.PaymentQuote
 import com.errymaricha.dafydiobooth.domain.model.PaymentStatus
@@ -2012,6 +2022,27 @@ fun CaptureFinishedScreen(
     modifier: Modifier = Modifier,
 ) {
     val cloudDownloadUrl = "https://dafydio.com/$sessionCode"
+
+    // Kiosk Auto-Close & Dialog States
+    var countdownSeconds by remember { mutableStateOf(30) }
+    var selectedPhotoPathForLightbox by remember { mutableStateOf<String?>(null) }
+    var showQrZoomDialog by remember { mutableStateOf(false) }
+
+    val resetTimer = { countdownSeconds = 30 }
+
+    LaunchedEffect(countdownSeconds) {
+        if (countdownSeconds > 0) {
+            kotlinx.coroutines.delay(1000L)
+            countdownSeconds--
+        } else {
+            if (isQuickBooth) {
+                onExitToDashboard()
+            } else {
+                onBackToWelcome()
+            }
+        }
+    }
+
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
@@ -2019,6 +2050,9 @@ fun CaptureFinishedScreen(
             .safeDrawingPadding()
             .padding(24.dp),
     ) {
+        // Celebratory Confetti background effect
+        ConfettiEffect()
+
         val isTablet = maxWidth >= 900.dp
         if (isTablet) {
             Row(
@@ -2035,7 +2069,14 @@ fun CaptureFinishedScreen(
                     Surface(
                         modifier = Modifier
                             .fillMaxHeight()
-                            .aspectRatio(2f / 3f), // 4x6 format
+                            .aspectRatio(2f / 3f) // 4x6 format
+                            .clickable {
+                                resetTimer()
+                                // Let the main collage preview also trigger lightbox of the first image if clicked
+                                capturedPhotos.firstOrNull()?.let {
+                                    selectedPhotoPathForLightbox = it
+                                }
+                            },
                         shape = RoundedCornerShape(28.dp),
                         color = Color.Black.copy(alpha = 0.05f),
                         border = BorderStroke(1.dp, LaunchUiTokens.border),
@@ -2061,6 +2102,32 @@ fun CaptureFinishedScreen(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
+                    // Kiosk Auto-Close Info Bar
+                    Surface(
+                        color = LaunchUiTokens.primary.copy(alpha = 0.08f),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth().clickable { resetTimer() }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Kiosk Auto-Close",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = LaunchUiTokens.primary
+                            )
+                            Text(
+                                text = "Kembali ke Welcome dalam ${countdownSeconds}s",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = LaunchUiTokens.primary
+                            )
+                        }
+                    }
+
                     LaunchHeroCard(
                         title = if (isQuickBooth) "Sesi Quick Booth selesai" else "Sesi foto selesai",
                         subtitle = "Preview hasil sesi untuk event $eventName dengan template ${template.name}.",
@@ -2095,7 +2162,15 @@ fun CaptureFinishedScreen(
                                                 ),
                                             ),
                                         )
-                                        .border(1.dp, LaunchUiTokens.border, RoundedCornerShape(14.dp)),
+                                        .border(1.dp, LaunchUiTokens.border, RoundedCornerShape(14.dp))
+                                        .then(
+                                            if (!photoPath.isNullOrBlank()) {
+                                                Modifier.clickable {
+                                                    resetTimer()
+                                                    selectedPhotoPathForLightbox = photoPath
+                                                }
+                                            } else Modifier
+                                        ),
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     if (!photoPath.isNullOrBlank()) {
@@ -2116,6 +2191,10 @@ fun CaptureFinishedScreen(
                     CloudQrCard(
                         sessionCode = sessionCode,
                         cloudDownloadUrl = cloudDownloadUrl,
+                        onQrClick = {
+                            resetTimer()
+                            showQrZoomDialog = true
+                        }
                     )
                     
                     if (onPrintClick != null || onDownloadClick != null) {
@@ -2125,7 +2204,10 @@ fun CaptureFinishedScreen(
                         ) {
                             if (onDownloadClick != null) {
                                 OutlinedButton(
-                                    onClick = onDownloadClick,
+                                    onClick = {
+                                        resetTimer()
+                                        onDownloadClick()
+                                    },
                                     modifier = Modifier.weight(1f),
                                     shape = RoundedCornerShape(14.dp),
                                     border = BorderStroke(1.dp, LaunchUiTokens.primary.copy(alpha = 0.3f))
@@ -2134,19 +2216,63 @@ fun CaptureFinishedScreen(
                                 }
                             }
                             if (onPrintClick != null) {
-                                val printing = mockPrintStatus == MockPrintStatus.Queued
-                                Button(
-                                    onClick = onPrintClick,
-                                    enabled = !printing,
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(14.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = LaunchUiTokens.purple)
-                                ) {
-                                    Text(
-                                        text = if (printing) "Printing..." else "Print Strip",
-                                        color = Color.White,
-                                        fontWeight = FontWeight.Bold
-                                    )
+                                when (mockPrintStatus) {
+                                    MockPrintStatus.Queued -> {
+                                        Button(
+                                            onClick = {},
+                                            enabled = false,
+                                            modifier = Modifier.weight(1f),
+                                            shape = RoundedCornerShape(14.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = LaunchUiTokens.purple)
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                CircularProgressIndicator(
+                                                    modifier = Modifier.size(16.dp),
+                                                    color = Color.White,
+                                                    strokeWidth = 2.dp
+                                                )
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text("Printing...", color = Color.White, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                    MockPrintStatus.Sent -> {
+                                        Button(
+                                            onClick = {
+                                                resetTimer()
+                                                onPrintClick()
+                                            },
+                                            enabled = true,
+                                            modifier = Modifier.weight(1f),
+                                            shape = RoundedCornerShape(14.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = LaunchUiTokens.success)
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Check,
+                                                    contentDescription = "Success",
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text("Printed!", color = Color.White, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                    else -> {
+                                        Button(
+                                            onClick = {
+                                                resetTimer()
+                                                onPrintClick()
+                                            },
+                                            enabled = true,
+                                            modifier = Modifier.weight(1f),
+                                            shape = RoundedCornerShape(14.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = LaunchUiTokens.purple)
+                                        ) {
+                                            Text("Print Strip", color = Color.White, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -2174,19 +2300,28 @@ fun CaptureFinishedScreen(
 
                     if (isQuickBooth) {
                         LaunchPrimaryButton(
-                            text = "Kembali ke Dashboard",
-                            onClick = onExitToDashboard,
+                            text = "Kembali ke Dashboard (${countdownSeconds}s)",
+                            onClick = {
+                                resetTimer()
+                                onExitToDashboard()
+                            },
                             enabled = true,
                         )
                     } else {
                         LaunchSecondaryButton(
                             text = "Kembali ke Welcome Screen",
-                            onClick = onBackToWelcome,
+                            onClick = {
+                                resetTimer()
+                                onBackToWelcome()
+                            },
                             enabled = true,
                         )
                         LaunchPrimaryButton(
-                            text = "Mulai Sesi Baru",
-                            onClick = onStartNewSession,
+                            text = "Mulai Sesi Baru (${countdownSeconds}s)",
+                            onClick = {
+                                resetTimer()
+                                onStartNewSession()
+                            },
                             enabled = true,
                         )
                     }
@@ -2199,6 +2334,32 @@ fun CaptureFinishedScreen(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
+                // Kiosk Auto-Close Info Bar
+                Surface(
+                    color = LaunchUiTokens.primary.copy(alpha = 0.08f),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().clickable { resetTimer() }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Kiosk Auto-Close",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = LaunchUiTokens.primary
+                        )
+                        Text(
+                            text = "Kembali ke Welcome dalam ${countdownSeconds}s",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = LaunchUiTokens.primary
+                        )
+                    }
+                }
+
                 LaunchHeroCard(
                     title = if (isQuickBooth) "Sesi Quick Booth selesai" else "Sesi foto selesai",
                     subtitle = "Preview hasil sesi untuk event $eventName dengan template ${template.name}.",
@@ -2209,7 +2370,13 @@ fun CaptureFinishedScreen(
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .aspectRatio(2f / 3f), // Lock aspect ratio for 4x6 photostrip
+                        .aspectRatio(2f / 3f) // Lock aspect ratio for 4x6 photostrip
+                        .clickable {
+                            resetTimer()
+                            capturedPhotos.firstOrNull()?.let {
+                                selectedPhotoPathForLightbox = it
+                            }
+                        },
                     shape = RoundedCornerShape(24.dp),
                     color = Color.Black.copy(alpha = 0.05f),
                     border = BorderStroke(1.dp, LaunchUiTokens.border),
@@ -2229,6 +2396,10 @@ fun CaptureFinishedScreen(
                 CloudQrCard(
                     sessionCode = sessionCode,
                     cloudDownloadUrl = cloudDownloadUrl,
+                    onQrClick = {
+                        resetTimer()
+                        showQrZoomDialog = true
+                    }
                 )
                 
                 if (onPrintClick != null || onDownloadClick != null) {
@@ -2238,7 +2409,10 @@ fun CaptureFinishedScreen(
                     ) {
                         if (onDownloadClick != null) {
                             OutlinedButton(
-                                onClick = onDownloadClick,
+                                onClick = {
+                                    resetTimer()
+                                    onDownloadClick()
+                                },
                                 modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(14.dp),
                                 border = BorderStroke(1.dp, LaunchUiTokens.primary.copy(alpha = 0.3f))
@@ -2247,19 +2421,63 @@ fun CaptureFinishedScreen(
                             }
                         }
                         if (onPrintClick != null) {
-                            val printing = mockPrintStatus == MockPrintStatus.Queued
-                            Button(
-                                onClick = onPrintClick,
-                                enabled = !printing,
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = LaunchUiTokens.purple)
-                            ) {
-                                Text(
-                                    text = if (printing) "Printing..." else "Print Strip",
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Bold
-                                )
+                            when (mockPrintStatus) {
+                                MockPrintStatus.Queued -> {
+                                    Button(
+                                        onClick = {},
+                                        enabled = false,
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(14.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = LaunchUiTokens.purple)
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(16.dp),
+                                                color = Color.White,
+                                                strokeWidth = 2.dp
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("Printing...", color = Color.White, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                                MockPrintStatus.Sent -> {
+                                    Button(
+                                        onClick = {
+                                            resetTimer()
+                                            onPrintClick()
+                                        },
+                                        enabled = true,
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(14.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = LaunchUiTokens.success)
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = "Success",
+                                                tint = Color.White,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("Printed!", color = Color.White, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                                else -> {
+                                    Button(
+                                        onClick = {
+                                            resetTimer()
+                                            onPrintClick()
+                                        },
+                                        enabled = true,
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(14.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = LaunchUiTokens.purple)
+                                    ) {
+                                        Text("Print Strip", color = Color.White, fontWeight = FontWeight.Bold)
+                                    }
+                                }
                             }
                         }
                     }
@@ -2287,19 +2505,28 @@ fun CaptureFinishedScreen(
 
                 if (isQuickBooth) {
                     LaunchPrimaryButton(
-                        text = "Kembali ke Dashboard",
-                        onClick = onExitToDashboard,
+                        text = "Kembali ke Dashboard (${countdownSeconds}s)",
+                        onClick = {
+                            resetTimer()
+                            onExitToDashboard()
+                        },
                         enabled = true,
                     )
                 } else {
                     LaunchSecondaryButton(
                         text = "Kembali ke Welcome Screen",
-                        onClick = onBackToWelcome,
+                        onClick = {
+                            resetTimer()
+                            onBackToWelcome()
+                        },
                         enabled = true,
                     )
                     LaunchPrimaryButton(
-                        text = "Mulai Sesi Baru",
-                        onClick = onStartNewSession,
+                        text = "Mulai Sesi Baru (${countdownSeconds}s)",
+                        onClick = {
+                            resetTimer()
+                            onStartNewSession()
+                        },
                         enabled = true,
                     )
                 }
@@ -2312,14 +2539,40 @@ fun CaptureFinishedScreen(
             )
         }
     }
+
+    // Modal Overlays
+    selectedPhotoPathForLightbox?.let { path ->
+        PhotoLightboxDialog(
+            photoPath = path,
+            onDismiss = {
+                selectedPhotoPathForLightbox = null
+                resetTimer()
+            }
+        )
+    }
+
+    if (showQrZoomDialog) {
+        QrCodeZoomDialog(
+            url = cloudDownloadUrl,
+            sessionCode = sessionCode,
+            onDismiss = {
+                showQrZoomDialog = false
+                resetTimer()
+            }
+        )
+    }
 }
 
 @Composable
 private fun CloudQrCard(
     sessionCode: String,
     cloudDownloadUrl: String,
+    onQrClick: () -> Unit,
 ) {
-    LaunchSectionCard(title = "Download Cloud") {
+    LaunchSectionCard(
+        title = "Download Cloud",
+        modifier = Modifier.clickable { onQrClick() }
+    ) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -2349,6 +2602,12 @@ private fun CloudQrCard(
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = "💡 Ketuk untuk memperbesar",
+                    color = LaunchUiTokens.inkSoft,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Medium
                 )
             }
         }
@@ -2454,47 +2713,264 @@ private fun KioskExitOverlay(
     }
 }
 
+class ConfettiParticle(
+    var x: Float,
+    var y: Float,
+    var velocityY: Float,
+    var velocityX: Float,
+    val color: Color,
+    val size: Float,
+    var rotation: Float,
+    var rotationSpeed: Float,
+    val shapeCircle: Boolean
+)
+
 @Composable
-private fun FakeQrCode(
-    value: String,
-    modifier: Modifier = Modifier,
-) {
-    val cells = remember(value) {
-        List(11) { row ->
-            List(11) { col ->
-                ((value.hashCode() shr ((row * 11 + col) % 24)) and 1) == 1 ||
-                    (row < 3 && col < 3) ||
-                    (row < 3 && col > 7) ||
-                    (row > 7 && col < 3)
+fun ConfettiEffect(modifier: Modifier = Modifier) {
+    val colors = listOf(
+        Color(0xFF5B67FF), Color(0xFF8B5CF6), Color(0xFFEC4899),
+        Color(0xFF10B981), Color(0xFFF59E0B), Color(0xFF3B82F6)
+    )
+    val particles = remember {
+        List(60) {
+            ConfettiParticle(
+                x = (0..1000).random().toFloat() / 1000f,
+                y = -(0..800).random().toFloat() / 1000f,
+                velocityY = (30..80).random().toFloat() / 10f,
+                velocityX = (-15..15).random().toFloat() / 10f,
+                color = colors.random(),
+                size = (8..18).random().toFloat(),
+                rotation = (0..360).random().toFloat(),
+                rotationSpeed = (-40..40).random().toFloat() / 10f,
+                shapeCircle = java.util.Random().nextBoolean()
+            )
+        }
+    }
+    var frameTime by remember { mutableStateOf(0L) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            withFrameMillis { time ->
+                frameTime = time
             }
         }
     }
-    Column(
-        modifier = modifier
-            .background(Color.White, RoundedCornerShape(20.dp))
-            .border(1.dp, LaunchUiTokens.border, RoundedCornerShape(20.dp))
-            .padding(10.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        cells.forEach { row ->
-            Row(
-                modifier = Modifier.weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                row.forEach { filled ->
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .background(
-                                if (filled) LaunchUiTokens.ink else Color.Transparent,
-                                RoundedCornerShape(2.dp),
-                            ),
+    Canvas(modifier = modifier.fillMaxSize()) {
+        val width = size.width
+        val height = size.height
+        particles.forEach { p ->
+            p.y += p.velocityY / height * 60f
+            p.x += p.velocityX / width * 60f
+            p.rotation += p.rotationSpeed
+            if (p.y > 1.1f) {
+                p.y = -0.1f
+                p.x = (0..1000).random().toFloat() / 1000f
+            }
+            val px = p.x * width
+            val py = p.y * height
+            rotate(degrees = p.rotation, pivot = androidx.compose.ui.geometry.Offset(px, py)) {
+                if (p.shapeCircle) {
+                    drawCircle(color = p.color, radius = p.size / 2, center = androidx.compose.ui.geometry.Offset(px, py))
+                } else {
+                    drawRect(
+                        color = p.color,
+                        topLeft = androidx.compose.ui.geometry.Offset(px - p.size / 2, py - p.size / 3),
+                        size = androidx.compose.ui.geometry.Size(p.size, p.size * 0.6f)
                     )
                 }
             }
         }
     }
+}
+
+@Composable
+fun QrCodeCanvas(
+    data: String,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val sizePx = size.minDimension
+        val numModules = 21
+        val moduleSize = sizePx / numModules
+        drawRect(color = Color.White)
+        fun drawFinderPattern(x: Int, y: Int) {
+            drawRect(
+                color = Color.Black,
+                topLeft = androidx.compose.ui.geometry.Offset(x * moduleSize, y * moduleSize),
+                size = androidx.compose.ui.geometry.Size(7 * moduleSize, 7 * moduleSize)
+            )
+            drawRect(
+                color = Color.White,
+                topLeft = androidx.compose.ui.geometry.Offset((x + 1) * moduleSize, (y + 1) * moduleSize),
+                size = androidx.compose.ui.geometry.Size(5 * moduleSize, 5 * moduleSize)
+            )
+            drawRect(
+                color = Color.Black,
+                topLeft = androidx.compose.ui.geometry.Offset((x + 2) * moduleSize, (y + 2) * moduleSize),
+                size = androidx.compose.ui.geometry.Size(3 * moduleSize, 3 * moduleSize)
+            )
+        }
+        drawFinderPattern(0, 0)
+        drawFinderPattern(14, 0)
+        drawFinderPattern(0, 14)
+        drawRect(
+            color = Color.Black,
+            topLeft = androidx.compose.ui.geometry.Offset(14 * moduleSize, 14 * moduleSize),
+            size = androidx.compose.ui.geometry.Size(3 * moduleSize, 3 * moduleSize)
+        )
+        drawRect(
+            color = Color.White,
+            topLeft = androidx.compose.ui.geometry.Offset(15 * moduleSize, 15 * moduleSize),
+            size = androidx.compose.ui.geometry.Size(1 * moduleSize, 1 * moduleSize)
+        )
+        val random = java.util.Random(data.hashCode().toLong())
+        for (r in 0 until numModules) {
+            for (c in 0 until numModules) {
+                val isFinder = (r < 8 && c < 8) || (r < 8 && c > 12) || (r > 12 && c < 8)
+                val isAlignment = (r in 14..16 && c in 14..16)
+                if (isFinder || isAlignment) continue
+                if (random.nextBoolean()) {
+                    drawRect(
+                        color = Color.Black,
+                        topLeft = androidx.compose.ui.geometry.Offset(c * moduleSize, r * moduleSize),
+                        size = androidx.compose.ui.geometry.Size(moduleSize, moduleSize)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun PhotoLightboxDialog(
+    photoPath: String,
+    onDismiss: () -> Unit
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.88f))
+                .clickable { onDismiss() },
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(0.85f)
+                        .fillMaxHeight(0.8f)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(Color.White)
+                        .padding(12.dp)
+                        .clickable(enabled = false) {}
+                ) {
+                    AsyncImage(
+                        model = File(photoPath),
+                        contentDescription = "Lightbox Image",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+                Button(
+                    onClick = onDismiss,
+                    shape = RoundedCornerShape(99.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.2f))
+                ) {
+                    Text("Tutup", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun QrCodeZoomDialog(
+    url: String,
+    sessionCode: String,
+    onDismiss: () -> Unit
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.85f))
+                .clickable { onDismiss() },
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(20.dp),
+                modifier = Modifier
+                    .width(360.dp)
+                    .clip(RoundedCornerShape(32.dp))
+                    .background(Color.White)
+                    .clickable(enabled = false) {}
+                    .padding(28.dp)
+            ) {
+                Text(
+                    text = "Scan QR Code",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = LaunchUiTokens.ink
+                )
+                QrCodeCanvas(
+                    data = url,
+                    modifier = Modifier
+                        .size(240.dp)
+                        .border(1.dp, LaunchUiTokens.border, RoundedCornerShape(16.dp))
+                        .clip(RoundedCornerShape(16.dp))
+                )
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = "Session: $sessionCode",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = LaunchUiTokens.inkSoft
+                    )
+                    Text(
+                        text = url,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = LaunchUiTokens.primary,
+                        textAlign = TextAlign.Center
+                    )
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = LaunchUiTokens.primary)
+                ) {
+                    Text("Selesai", fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FakeQrCode(
+    value: String,
+    modifier: Modifier = Modifier,
+) {
+    QrCodeCanvas(
+        data = value,
+        modifier = modifier
+            .background(Color.White, RoundedCornerShape(20.dp))
+            .border(1.dp, LaunchUiTokens.border, RoundedCornerShape(20.dp))
+            .padding(10.dp)
+    )
 }
 
 @Composable
