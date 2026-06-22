@@ -783,9 +783,10 @@ private fun TemplatePreviewControlsCard(
                         ) {
                             val filters = listOf(
                                 ColorFilterType.Normal to "Normal",
-                                ColorFilterType.Bw to "B&W",
-                                ColorFilterType.Vintage to "Vintage",
-                                ColorFilterType.Cool to "Cool"
+                                ColorFilterType.BeautyColor to "Beauty Color",
+                                ColorFilterType.BeautyGlow to "Beauty Glow",
+                                ColorFilterType.Flawless to "Flawless",
+                                ColorFilterType.SoftSkin to "Soft Skin"
                             )
                             filters.forEach { (type, label) ->
                                 val active = state.selectedColorFilter == type

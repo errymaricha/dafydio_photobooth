@@ -73,25 +73,39 @@ class TemplateRenderedOutputComposer(private val context: Context) {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
         val androidFilter = when (state.selectedColorFilter) {
             ColorFilterType.Normal -> null
-            ColorFilterType.Bw -> {
-                val cm = android.graphics.ColorMatrix().apply { setSaturation(0f) }
-                android.graphics.ColorMatrixColorFilter(cm)
-            }
-            ColorFilterType.Vintage -> {
+            ColorFilterType.BeautyColor -> {
                 val matrix = floatArrayOf(
-                    0.393f, 0.769f, 0.189f, 0f, 0f,
-                    0.349f, 0.686f, 0.168f, 0f, 0f,
-                    0.272f, 0.534f, 0.131f, 0f, 0f,
-                    0f,     0f,     0f,     1f, 0f
+                    1.10f, 0.05f, 0.05f, 0f, 0f,
+                    0.02f, 1.10f, 0.02f, 0f, 0f,
+                    0.02f, 0.02f, 1.05f, 0f, 0f,
+                    0f,    0f,    0f,    1f, 0f
                 )
                 android.graphics.ColorMatrixColorFilter(matrix)
             }
-            ColorFilterType.Cool -> {
+            ColorFilterType.BeautyGlow -> {
                 val matrix = floatArrayOf(
-                    0.8f, 0f,   0f,   0f, 0f,
-                    0f,   1.0f, 0f,   0f, 0f,
-                    0f,   0f,   1.2f, 0f, 0f,
-                    0f,   0f,   0f,   1f, 0f
+                    1.15f, 0f,    0f,    0f, 15f,
+                    0f,    1.12f, 0f,    0f, 12f,
+                    0f,    0f,    1.08f, 0f, 8f,
+                    0f,    0f,    0f,    1f, 0f
+                )
+                android.graphics.ColorMatrixColorFilter(matrix)
+            }
+            ColorFilterType.Flawless -> {
+                val matrix = floatArrayOf(
+                    1.20f, 0f,    0f,    0f, 10f,
+                    0f,    1.15f, 0f,    0f, 10f,
+                    0f,    0f,    1.18f, 0f, 12f,
+                    0f,    0f,    0f,    1f, 0f
+                )
+                android.graphics.ColorMatrixColorFilter(matrix)
+            }
+            ColorFilterType.SoftSkin -> {
+                val matrix = floatArrayOf(
+                    0.90f, 0f,    0f,    0f, 30f,
+                    0f,    0.85f, 0f,    0f, 30f,
+                    0f,    0f,    0.80f, 0f, 25f,
+                    0f,    0f,    0f,    1f, 0f
                 )
                 android.graphics.ColorMatrixColorFilter(matrix)
             }

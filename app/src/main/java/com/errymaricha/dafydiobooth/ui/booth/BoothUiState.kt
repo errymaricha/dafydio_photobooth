@@ -176,7 +176,8 @@ data class TemplateListItem(
 
 enum class ColorFilterType {
     Normal,
-    Bw,
-    Vintage,
-    Cool
+    BeautyColor,
+    BeautyGlow,
+    Flawless,
+    SoftSkin
 }

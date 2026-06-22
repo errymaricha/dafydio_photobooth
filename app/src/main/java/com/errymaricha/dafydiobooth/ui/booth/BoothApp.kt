@@ -907,23 +907,36 @@ fun TemplateSurface(
                 if (photoPath != null) {
                     val composeFilter = when (state.selectedColorFilter) {
                         ColorFilterType.Normal -> null
-                        ColorFilterType.Bw -> ColorFilter.colorMatrix(
-                            ColorMatrix().apply { setToSaturation(0f) }
-                        )
-                        ColorFilterType.Vintage -> ColorFilter.colorMatrix(
+                        ColorFilterType.BeautyColor -> ColorFilter.colorMatrix(
                             ColorMatrix(floatArrayOf(
-                                0.393f, 0.769f, 0.189f, 0f, 0f,
-                                0.349f, 0.686f, 0.168f, 0f, 0f,
-                                0.272f, 0.534f, 0.131f, 0f, 0f,
-                                0f,     0f,     0f,     1f, 0f
+                                1.10f, 0.05f, 0.05f, 0f, 0f,
+                                0.02f, 1.10f, 0.02f, 0f, 0f,
+                                0.02f, 0.02f, 1.05f, 0f, 0f,
+                                0f,    0f,    0f,    1f, 0f
                             ))
                         )
-                        ColorFilterType.Cool -> ColorFilter.colorMatrix(
+                        ColorFilterType.BeautyGlow -> ColorFilter.colorMatrix(
                             ColorMatrix(floatArrayOf(
-                                0.8f, 0f,   0f,   0f, 0f,
-                                0f,   1.0f, 0f,   0f, 0f,
-                                0f,   0f,   1.2f, 0f, 0f,
-                                0f,   0f,   0f,   1f, 0f
+                                1.15f, 0f,    0f,    0f, 15f,
+                                0f,    1.12f, 0f,    0f, 12f,
+                                0f,    0f,    1.08f, 0f, 8f,
+                                0f,    0f,    0f,    1f, 0f
+                            ))
+                        )
+                        ColorFilterType.Flawless -> ColorFilter.colorMatrix(
+                            ColorMatrix(floatArrayOf(
+                                1.20f, 0f,    0f,    0f, 10f,
+                                0f,    1.15f, 0f,    0f, 10f,
+                                0f,    0f,    1.18f, 0f, 12f,
+                                0f,    0f,    0f,    1f, 0f
+                            ))
+                        )
+                        ColorFilterType.SoftSkin -> ColorFilter.colorMatrix(
+                            ColorMatrix(floatArrayOf(
+                                0.90f, 0f,    0f,    0f, 30f,
+                                0f,    0.85f, 0f,    0f, 30f,
+                                0f,    0f,    0.80f, 0f, 25f,
+                                0f,    0f,    0f,    1f, 0f
                             ))
                         )
                     }
