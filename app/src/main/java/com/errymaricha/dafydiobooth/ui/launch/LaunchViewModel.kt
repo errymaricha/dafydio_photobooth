@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
 
 class LaunchViewModel(
     private val prepareLaunch: PrepareLaunchUseCase,
@@ -449,11 +450,35 @@ class LaunchViewModel(
     private fun startApprovalPolling(token: String, sessionId: String) {
         approvalPollingJob?.cancel()
         approvalPollingJob = viewModelScope.launch {
-            repeat(APPROVAL_POLL_LIMIT) {
-                delay(APPROVAL_POLL_INTERVAL_MS)
-                val terminal = checkApprovalOnce(token, sessionId, showWaitingMessage = false)
-                if (terminal) return@launch
-            }
+            checkLaunchPayment.checkPaymentSse(token, sessionId)
+                .collect { status ->
+                    val approved = status.isApproved
+                    val rejected = status.isRejected
+                    val rejectedMessage = buildRejectedMessage(status.rejectionReason, status.reviewer, status.reviewedAt)
+                    if (approved) {
+                        sessionStateManager.updateFromLaunchSession(
+                            session = _ui.value.session,
+                            customerWhatsapp = _ui.value.customerWhatsapp,
+                            authToken = token,
+                            selectedEventId = _ui.value.selectedEventId,
+                        )
+                    }
+                    _ui.update {
+                        it.copy(
+                            approvalStatus = status.displayStatus,
+                            message = when {
+                                approved -> "Manual payment approved. Membuka pilih template."
+                                rejected -> rejectedMessage
+                                else -> "Menunggu approval untuk session ${status.sessionCode ?: status.sessionId}."
+                            },
+                            shouldNavigateToTemplates = approved,
+                            error = null,
+                        )
+                    }
+                    if (approved || rejected) {
+                        approvalPollingJob?.cancel()
+                    }
+                }
         }
     }
 

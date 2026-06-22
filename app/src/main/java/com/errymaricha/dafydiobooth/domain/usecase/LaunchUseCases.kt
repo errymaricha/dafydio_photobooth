@@ -7,6 +7,7 @@ import com.errymaricha.dafydiobooth.domain.model.LaunchSession
 import com.errymaricha.dafydiobooth.domain.model.PaymentQuote
 import com.errymaricha.dafydiobooth.domain.model.VoucherVerification
 import com.errymaricha.dafydiobooth.domain.repository.LaunchRepository
+import kotlinx.coroutines.flow.Flow
 
 class CalculateFinalAmountUseCase {
     operator fun invoke(
@@ -186,6 +187,15 @@ class CheckLaunchPaymentUseCase(
             token = token,
             sessionId = sessionId,
         )
+    }
+
+    fun checkPaymentSse(
+        token: String,
+        sessionId: String,
+    ): Flow<LaunchPaymentStatus> {
+        require(token.isNotBlank()) { "Token station belum tersedia" }
+        require(sessionId.isNotBlank()) { "Session manual belum dibuat" }
+        return repository.checkPaymentSse(token, sessionId)
     }
 }
 

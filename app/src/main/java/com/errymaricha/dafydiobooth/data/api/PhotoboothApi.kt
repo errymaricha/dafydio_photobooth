@@ -13,6 +13,7 @@ import retrofit2.http.Part
 import retrofit2.http.PATCH
 import retrofit2.http.Path
 import retrofit2.http.Query
+import retrofit2.http.Streaming
 
 interface PhotoboothApi {
     @POST("api/device/auth")
@@ -85,6 +86,14 @@ interface PhotoboothApi {
         @Path("id") sessionId: String,
         @Header("Authorization") bearerToken: String? = null,
     ): PaymentCheckResponse
+
+    @Streaming
+    @GET("api/device/sessions/{id}/payment-check/sse")
+    suspend fun paymentCheckSse(
+        @Path("id") sessionId: String,
+        @Header("Authorization") bearerToken: String? = null,
+        @Header("Accept") accept: String = "text/event-stream",
+    ): ResponseBody
 
     @POST("api/device/sessions/{id}/confirm-payment")
     suspend fun confirmPayment(

@@ -181,4 +181,23 @@ private class FakeLaunchRepository : LaunchRepository {
             unlockPhoto = true,
         )
     }
+
+    override fun checkPaymentSse(
+        token: String,
+        sessionId: String,
+    ): kotlinx.coroutines.flow.Flow<LaunchPaymentStatus> {
+        calls += "checkPaymentSse"
+        return kotlinx.coroutines.flow.flow {
+            emit(
+                LaunchPaymentStatus(
+                    sessionId = "session-1",
+                    sessionCode = "SES-001",
+                    paymentStatus = "paid",
+                    canUpload = true,
+                    paymentRequired = false,
+                    unlockPhoto = true,
+                )
+            )
+        }
+    }
 }

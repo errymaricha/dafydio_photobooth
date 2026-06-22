@@ -22,6 +22,9 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
 import retrofit2.HttpException
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.delay
 
 class LaunchRepositoryImpl(
     private val api: PhotoboothApi,
@@ -219,6 +222,87 @@ class LaunchRepositoryImpl(
             ).firstOrNull { it.isNullOrBlank().not() },
             reviewedAt = response.reviewedAt,
         )
+    }
+
+    override fun checkPaymentSse(
+        token: String,
+        sessionId: String,
+    ): Flow<LaunchPaymentStatus> = flow {
+        var shouldRetry = true
+        var retryCount = 0
+        while (shouldRetry) {
+            try {
+                val responseBody = api.paymentCheckSse(
+                    sessionId = sessionId,
+                    bearerToken = "Bearer $token"
+                )
+                
+                val reader = responseBody.charStream().buffered()
+                var line: String?
+                while (reader.readLine().also { line = it } != null) {
+                    val currentLine = line.orEmpty().trim()
+                    if (currentLine.startsWith("data:")) {
+                        val jsonString = currentLine.removePrefix("data:").trim()
+                        if (jsonString.isNotEmpty()) {
+                            val response = json.decodeFromString<com.errymaricha.dafydiobooth.data.api.PaymentCheckResponse>(jsonString)
+                            
+                            val reviewStatus = listOf(
+                                response.manualReviewStatus,
+                                response.approvalStatus,
+                                response.reviewStatus,
+                                response.manualPaymentStatus,
+                                response.paymentApprovalStatus,
+                                response.status,
+                            ).firstOrNull { it.isNullOrBlank().not() }
+                            
+                            val status = LaunchPaymentStatus(
+                                sessionId = response.sessionId,
+                                sessionCode = response.sessionCode,
+                                customerId = response.customerId,
+                                paymentStatus = response.paymentStatus,
+                                reviewStatus = reviewStatus,
+                                canUpload = response.canUpload == true || response.paymentUnlocked == true,
+                                paymentRequired = response.paymentRequired ?: (response.paymentStatus != "paid"),
+                                unlockPhoto = response.unlockPhoto == true || response.paymentUnlocked == true,
+                                rejectionReason = listOf(
+                                    response.rejectionReason,
+                                    response.rejectReason,
+                                    response.skipReason,
+                                    response.reviewNotes,
+                                    response.notes,
+                                    response.reason,
+                                    response.message,
+                                ).firstOrNull { it.isNullOrBlank().not() },
+                                reviewer = listOf(
+                                    response.reviewedByName,
+                                    response.reviewerName,
+                                    response.reviewer,
+                                    response.reviewedBy,
+                                ).firstOrNull { it.isNullOrBlank().not() },
+                                reviewedAt = response.reviewedAt,
+                            )
+                            emit(status)
+                            
+                            if (status.unlockPhoto || status.paymentStatus == "paid") {
+                                shouldRetry = false
+                                break
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                e.printStackTrace()
+            }
+            
+            if (shouldRetry) {
+                delay(2500)
+                retryCount++
+                if (retryCount > 100) {
+                    shouldRetry = false
+                }
+            }
+        }
     }
 
     private companion object {

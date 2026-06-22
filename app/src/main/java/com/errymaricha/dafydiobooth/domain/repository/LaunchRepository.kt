@@ -6,6 +6,7 @@ import com.errymaricha.dafydiobooth.domain.model.LaunchEvent
 import com.errymaricha.dafydiobooth.domain.model.LaunchSession
 import com.errymaricha.dafydiobooth.domain.model.PaymentQuote
 import com.errymaricha.dafydiobooth.domain.model.VoucherVerification
+import kotlinx.coroutines.flow.Flow
 
 interface LaunchRepository {
     suspend fun login(deviceCode: String, apiKey: String): String
@@ -59,4 +60,9 @@ interface LaunchRepository {
         token: String,
         sessionId: String,
     ): LaunchPaymentStatus
+
+    fun checkPaymentSse(
+        token: String,
+        sessionId: String,
+    ): Flow<LaunchPaymentStatus>
 }
