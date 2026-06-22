@@ -408,6 +408,7 @@ fun TemplatePreviewScreen(state: BoothUiState, actions: BoothActions) {
                         ) {
                             TemplatePreviewCanvasCard(
                                 state = state,
+                                actions = actions,
                                 isTablet = true,
                                 modifier = Modifier
                                     .weight(1.2f)
@@ -426,6 +427,7 @@ fun TemplatePreviewScreen(state: BoothUiState, actions: BoothActions) {
                         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                             TemplatePreviewCanvasCard(
                                 state = state,
+                                actions = actions,
                                 isTablet = false,
                                 modifier = Modifier.fillMaxWidth(),
                             )
@@ -446,6 +448,7 @@ fun TemplatePreviewScreen(state: BoothUiState, actions: BoothActions) {
 @Composable
 private fun TemplatePreviewCanvasCard(
     state: BoothUiState,
+    actions: BoothActions,
     isTablet: Boolean,
     modifier: Modifier = Modifier,
 ) {
@@ -499,6 +502,89 @@ private fun TemplatePreviewCanvasCard(
                     )
                     .clip(RoundedCornerShape(18.dp))
             )
+
+            // Dynamic Interactive Slot Row for Retake
+            val captureSlots = remember(state.selectedTemplateSlots) {
+                state.selectedTemplateSlots.map { it.sourceSlotIndex }.distinct().sorted()
+            }
+            if (captureSlots.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "Klik slot foto di bawah untuk retake:",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = TemplatePickerUiTokens.inkSoft
+                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    captureSlots.forEach { sourceSlot ->
+                        val photoPath = state.capturedPhotosBySlot[sourceSlot]
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(85.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .border(
+                                    width = 1.dp,
+                                    color = TemplatePickerUiTokens.border,
+                                    shape = RoundedCornerShape(16.dp)
+                                )
+                                .clickable {
+                                    actions.retakeSpecificSlot(sourceSlot)
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (photoPath != null) {
+                                AsyncImage(
+                                    model = File(photoPath),
+                                    contentDescription = "Slot $sourceSlot",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                                // Dim overlay
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(Color.Black.copy(alpha = 0.35f))
+                                )
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Text(
+                                        text = "Slot $sourceSlot",
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.labelMedium
+                                    )
+                                    Text(
+                                        text = "Retake",
+                                        color = Color.White.copy(alpha = 0.85f),
+                                        fontWeight = FontWeight.Medium,
+                                        fontSize = 10.sp
+                                    )
+                                }
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(Color.White.copy(alpha = 0.5f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "Slot $sourceSlot",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = Color.Gray,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

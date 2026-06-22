@@ -699,6 +699,25 @@ class BoothViewModel(
 
     fun retakePhoto() = _state.update { it.copy(step = BoothStep.Camera, capturedPhotoName = null, capturedPhotoPath = null) }
 
+    fun retakeSpecificSlot(sourceSlotIndex: Int) {
+        val current = state.value
+        val slots = captureSlotsOf(current)
+        val indexInCaptureSlots = slots.indexOf(sourceSlotIndex)
+        if (indexInCaptureSlots != -1) {
+            val targetNextCaptureIndex = indexInCaptureSlots + 1
+            _state.update {
+                it.copy(
+                    nextCaptureIndex = targetNextCaptureIndex,
+                    capturedPhotoPath = null,
+                    capturedPhotoName = null,
+                    step = BoothStep.Camera,
+                    eventStatusMessage = "Retake foto untuk Slot $sourceSlotIndex.",
+                    errorMessage = null,
+                )
+            }
+        }
+    }
+
     fun acceptCapturePreview() = launchRequest {
         val current = state.value
         val requiredCaptures = current.templateSlotCount.coerceAtLeast(1)
@@ -2145,6 +2164,19 @@ class BoothViewModel(
             current.capturedPhotosBySlot + (captureSlot to capturePath)
         } else {
             current.capturedPhotosBySlot
+        }
+        if (updatedPhotos.size >= requiredCaptures) {
+            _state.update {
+                it.copy(
+                    capturedPhotoName = null,
+                    capturedPhotoPath = null,
+                    capturedPhotosBySlot = updatedPhotos,
+                    step = BoothStep.TemplatePreview,
+                    eventStatusMessage = successMessage,
+                    errorMessage = null,
+                )
+            }
+            return
         }
         val hasMoreCapture = current.nextCaptureIndex < requiredCaptures
         if (hasMoreCapture) {
