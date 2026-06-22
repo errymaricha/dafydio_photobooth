@@ -82,21 +82,24 @@ fun FinishPageRedesign(state: BoothUiState, actions: BoothActions) {
 @Composable
 fun CapturePreviewScreen(state: BoothUiState, actions: BoothActions) {
     ScreenFrame(title = "Preview Capture", state = state, actions = actions, scrollable = false) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(bottom = 100.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                    val isTablet = maxWidth >= 900.dp
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val isTablet = maxWidth >= 900.dp
+            val scrollState = rememberScrollState()
+            Box(modifier = Modifier.fillMaxSize()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .then(
+                            if (isTablet) Modifier else Modifier.verticalScroll(scrollState)
+                        )
+                        .padding(bottom = 100.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
                     if (isTablet) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(IntrinsicSize.Max),
+                                .weight(1f),
                             horizontalArrangement = Arrangement.spacedBy(16.dp),
                         ) {
                             CapturePreviewCanvasCard(
@@ -125,39 +128,39 @@ fun CapturePreviewScreen(state: BoothUiState, actions: BoothActions) {
                         }
                     }
                 }
-            }
-            
-            // Floating glassmorphic bottom bar
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 12.dp)
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(Color.White.copy(alpha = 0.85f))
-                    .border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(24.dp))
-                    .padding(16.dp)
-            ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                    OutlinedButton(
-                        onClick = actions.retakePhoto,
-                        enabled = !state.isLoading,
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(20.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF5B67FF)),
-                        border = BorderStroke(1.5.dp, Color(0xFF5B67FF).copy(alpha = 0.4f))
-                    ) {
-                        Text("Retake", fontWeight = FontWeight.Bold)
-                    }
-                    Button(
-                        onClick = actions.acceptCapturePreview,
-                        enabled = !state.isLoading,
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(20.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5B67FF)),
-                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
-                    ) {
-                        Text("Use Photo", fontWeight = FontWeight.Bold, color = Color.White)
+                
+                // Floating glassmorphic bottom bar
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 12.dp)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(Color.White.copy(alpha = 0.85f))
+                        .border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(24.dp))
+                        .padding(16.dp)
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(
+                            onClick = actions.retakePhoto,
+                            enabled = !state.isLoading,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(20.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF5B67FF)),
+                            border = BorderStroke(1.5.dp, Color(0xFF5B67FF).copy(alpha = 0.4f))
+                        ) {
+                            Text("Retake", fontWeight = FontWeight.Bold)
+                        }
+                        Button(
+                            onClick = actions.acceptCapturePreview,
+                            enabled = !state.isLoading,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(20.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5B67FF)),
+                            elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
+                        ) {
+                            Text("Use Photo", fontWeight = FontWeight.Bold, color = Color.White)
+                        }
                     }
                 }
             }
