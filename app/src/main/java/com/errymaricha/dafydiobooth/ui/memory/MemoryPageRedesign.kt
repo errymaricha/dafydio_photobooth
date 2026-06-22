@@ -63,6 +63,11 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil3.compose.AsyncImage
+import android.content.Intent
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.automirrored.filled.Send
 import com.errymaricha.dafydiobooth.ui.theme.DafydioBoothTheme
 import java.io.File
 import java.text.SimpleDateFormat
@@ -559,6 +564,164 @@ private fun EmptyMomentsState(
     }
 }
 
+private fun shareToWhatsapp(context: android.content.Context, file: File) {
+    try {
+        val authority = "${context.packageName}.fileprovider"
+        val contentUri = androidx.core.content.FileProvider.getUriForFile(context, authority, file)
+        
+        val whatsappIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "image/*"
+            putExtra(Intent.EXTRA_STREAM, contentUri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        
+        try {
+            val personalIntent = Intent(whatsappIntent).setPackage("com.whatsapp")
+            context.startActivity(personalIntent)
+        } catch (e: Exception) {
+            try {
+                val businessIntent = Intent(whatsappIntent).setPackage("com.whatsapp.w4b")
+                context.startActivity(businessIntent)
+            } catch (ex: Exception) {
+                val chooser = Intent.createChooser(whatsappIntent, "Kirim via WhatsApp")
+                context.startActivity(chooser)
+            }
+        }
+    } catch (e: Exception) {
+        android.widget.Toast.makeText(context, "Gagal membagikan ke WhatsApp: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+    }
+}
+
+private fun shareToSystem(context: android.content.Context, file: File) {
+    try {
+        val authority = "${context.packageName}.fileprovider"
+        val contentUri = androidx.core.content.FileProvider.getUriForFile(context, authority, file)
+        
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "image/*"
+            putExtra(Intent.EXTRA_STREAM, contentUri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        val chooser = Intent.createChooser(shareIntent, "Bagikan Foto")
+        context.startActivity(chooser)
+    } catch (e: Exception) {
+        android.widget.Toast.makeText(context, "Gagal membagikan file: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+    }
+}
+
+@Composable
+private fun SharingSection(
+    item: MomentEntry,
+    activeDisplayFile: File?
+) {
+    val context = LocalContext.current
+    val canShare = activeDisplayFile != null && activeDisplayFile.exists()
+    
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = Color.White.copy(alpha = 0.05f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Share,
+                    contentDescription = "Share Icon",
+                    tint = item.accent,
+                    modifier = Modifier.size(20.dp)
+                )
+                Column {
+                    Text(
+                        "Bagikan Moment",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp
+                    )
+                    Text(
+                        if (canShare) {
+                            "Berbagi file: ${activeDisplayFile?.name}"
+                        } else {
+                            "Pilih foto di atas untuk dibagikan"
+                        },
+                        color = Color.White.copy(alpha = 0.5f),
+                        fontSize = 12.sp
+                    )
+                }
+            }
+            
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Button(
+                    onClick = {
+                        if (canShare) {
+                            shareToWhatsapp(context, activeDisplayFile)
+                        } else {
+                            android.widget.Toast.makeText(context, "File tidak dapat dibagikan (data demo/kosong)", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (canShare) Color(0xFF25D366) else Color(0xFF25D366).copy(alpha = 0.4f),
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(14.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 12.dp)
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Send,
+                            contentDescription = "WhatsApp",
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text("WhatsApp", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+                }
+                
+                Button(
+                    onClick = {
+                        if (canShare) {
+                            shareToSystem(context, activeDisplayFile)
+                        } else {
+                            android.widget.Toast.makeText(context, "File tidak dapat dibagikan (data demo/kosong)", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (canShare) MemoryTokens.primary else MemoryTokens.primary.copy(alpha = 0.4f),
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(14.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 12.dp)
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = "System Share",
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text("Kirim File", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun PhotoPreviewDialog(
     item: MomentEntry,
@@ -632,6 +795,8 @@ private fun PhotoPreviewDialog(
                                     onPhotoClick = { activeDisplayFile = it }
                                 )
 
+                                SharingSection(item = item, activeDisplayFile = activeDisplayFile)
+
                                 CloudSection(item = item)
 
                                 FileDetailsSection(item = item)
@@ -661,6 +826,8 @@ private fun PhotoPreviewDialog(
                                 activeDisplayFile = activeDisplayFile,
                                 onPhotoClick = { activeDisplayFile = it }
                             )
+
+                            SharingSection(item = item, activeDisplayFile = activeDisplayFile)
 
                             CloudSection(item = item)
 

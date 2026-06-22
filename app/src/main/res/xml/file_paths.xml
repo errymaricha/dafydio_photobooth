@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Expose app cache rendered output folder -->
+    <cache-path name="cache_outputs" path="rendered_output" />
+    <cache-path name="cache_all" path="." />
+    <!-- Expose internal/external app files -->
+    <external-files-path name="external_files" path="." />
+    <!-- Expose public storage pictures folder -->
+    <external-path name="external_pictures" path="Pictures/DafydioBooth" />
+    <external-path name="external_all" path="." />
+</paths>
