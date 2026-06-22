@@ -831,7 +831,12 @@ fun hasLegacyStorageWritePermission(context: Context): Boolean {
 }
 
 @Composable
-fun TemplateSurface(state: BoothUiState) {
+fun TemplateSurface(
+    state: BoothUiState,
+    modifier: Modifier = Modifier
+        .fillMaxWidth()
+        .heightIn(min = 320.dp, max = 460.dp)
+) {
     val context = LocalContext.current
     val orderedSlots = remember(state.selectedTemplateSlots) {
         state.selectedTemplateSlots.map { it.sourceSlotIndex }.distinct().sorted()
@@ -856,9 +861,7 @@ fun TemplateSurface(state: BoothUiState) {
     val aspect = canvasWidth.toFloat() / canvasHeight.toFloat()
 
     BoxWithConstraints(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 320.dp, max = 460.dp)
+        modifier = modifier
             .background(MaterialTheme.colorScheme.surfaceVariant),
     ) {
         val containerWidth = maxWidth

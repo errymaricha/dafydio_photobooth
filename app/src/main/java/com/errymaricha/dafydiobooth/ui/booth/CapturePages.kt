@@ -446,7 +446,7 @@ private fun CapturePreviewInfoCard(
     ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
+                .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(Color(0xFFF4F7FF), Color.White, Color(0xFFFFF4F9)),
@@ -479,12 +479,14 @@ private fun CapturePreviewInfoCard(
                     )
                 }
             }
-            Text(
-                text = "Desain akhir cetak dengan template overlay aktif. Pastikan posisi foto pas sebelum dilanjutkan.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+
+            TemplateSurface(
+                state = state,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .clip(RoundedCornerShape(18.dp))
             )
-            TemplateSurface(state)
         }
     }
 }
