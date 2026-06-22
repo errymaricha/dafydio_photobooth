@@ -103,6 +103,7 @@ data class BoothUiState(
     val mockPrintStatus: MockPrintStatus = MockPrintStatus.Idle,
     val mockPrintMessage: String? = null,
     val errorMessage: String? = null,
+    val selectedColorFilter: ColorFilterType = ColorFilterType.Normal,
 ) {
     val isStationReachable: Boolean
         get() {
@@ -172,3 +173,10 @@ data class TemplateListItem(
     val overlayReady: Boolean,
     val slotCount: Int,
 )
+
+enum class ColorFilterType {
+    Normal,
+    Bw,
+    Vintage,
+    Cool
+}

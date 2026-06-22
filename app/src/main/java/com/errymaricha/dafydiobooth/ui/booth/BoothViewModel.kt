@@ -278,6 +278,7 @@ class BoothViewModel(
             current.copy(
                 step = BoothStep.TemplatePicker,
                 localOnlySession = true,
+                selectedColorFilter = ColorFilterType.Normal,
                 errorMessage = null,
             )
         } else {
@@ -301,6 +302,7 @@ class BoothViewModel(
                 capturedPhotosBySlot = emptyMap(),
                 uploadedSessionPhotosBySlot = emptyMap(),
                 localOnlySession = true,
+                selectedColorFilter = ColorFilterType.Normal,
                 eventStatusMessage = if (current.isStationConnected) {
                     "Template lokal belum tersedia. Masuk Quick Photo mode."
                 } else {
@@ -633,6 +635,7 @@ class BoothViewModel(
                 capturedPhotoPath = null,
                 capturedPhotosBySlot = emptyMap(),
                 uploadedSessionPhotosBySlot = emptyMap(),
+                selectedColorFilter = ColorFilterType.Normal,
                 errorMessage = null,
             )
         }
@@ -658,6 +661,7 @@ class BoothViewModel(
             capturedPhotoPath = null,
             capturedPhotosBySlot = emptyMap(),
             uploadedSessionPhotosBySlot = emptyMap(),
+            selectedColorFilter = ColorFilterType.Normal,
             errorMessage = null,
         )
     }
@@ -1039,6 +1043,7 @@ class BoothViewModel(
             paymentStatus = null,
             mockPrintStatus = MockPrintStatus.Idle,
             mockPrintMessage = null,
+            selectedColorFilter = ColorFilterType.Normal,
             errorMessage = null,
         )
     }
@@ -1203,6 +1208,10 @@ class BoothViewModel(
     fun updateLaunchAdditionalPrintCount(value: String) = updateAndPersistConfig {
         val count = value.filter(Char::isDigit).toIntOrNull() ?: 0
         it.copy(launchAdditionalPrintCount = count.coerceAtLeast(0), errorMessage = null)
+    }
+
+    fun setColorFilter(filter: ColorFilterType) {
+        _state.update { it.copy(selectedColorFilter = filter) }
     }
 
     fun updateVoucherCode(value: String) = updateAndPersistConfig { it.copy(voucherCode = value, errorMessage = null) }

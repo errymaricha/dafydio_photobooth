@@ -68,6 +68,7 @@ import com.errymaricha.dafydiobooth.ui.booth.BoothUiState
 import com.errymaricha.dafydiobooth.ui.booth.ScreenFrame
 import com.errymaricha.dafydiobooth.ui.booth.TemplateSurface
 import com.errymaricha.dafydiobooth.ui.booth.TemplateListItem
+import com.errymaricha.dafydiobooth.ui.booth.ColorFilterType
 import com.errymaricha.dafydiobooth.ui.launch.LaunchUiState
 import java.io.File
 
@@ -759,7 +760,69 @@ private fun TemplatePreviewControlsCard(
                     }
                 }
 
-                // 3. Ringkasan Sesi Card
+                // 3. Filter Warna Panel
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    color = Color.White.copy(alpha = 0.8f),
+                    border = BorderStroke(1.dp, TemplatePickerUiTokens.border)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = "Filter Warna",
+                            fontWeight = FontWeight.Bold,
+                            color = TemplatePickerUiTokens.ink,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            val filters = listOf(
+                                ColorFilterType.Normal to "Normal",
+                                ColorFilterType.Bw to "B&W",
+                                ColorFilterType.Vintage to "Vintage",
+                                ColorFilterType.Cool to "Cool"
+                            )
+                            filters.forEach { (type, label) ->
+                                val active = state.selectedColorFilter == type
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(
+                                            if (active) {
+                                                Brush.horizontalGradient(
+                                                    colors = listOf(TemplatePickerUiTokens.primary, TemplatePickerUiTokens.purple)
+                                                )
+                                            } else {
+                                                Brush.linearGradient(
+                                                    colors = listOf(Color(0xFFF3F4F6), Color(0xFFF3F4F6))
+                                                )
+                                            }
+                                        )
+                                        .clickable {
+                                            actions.setColorFilter(type)
+                                        }
+                                        .padding(vertical = 10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = label,
+                                        color = if (active) Color.White else TemplatePickerUiTokens.inkSoft,
+                                        fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+                                        style = MaterialTheme.typography.labelMedium
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 4. Ringkasan Sesi Card
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(18.dp),

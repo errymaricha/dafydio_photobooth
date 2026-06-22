@@ -53,6 +53,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -140,6 +142,7 @@ private fun BoothViewModel.toActions() = BoothActions(
     capturePhotoFile = ::capturePhoto,
     retakePhoto = ::retakePhoto,
     retakeSpecificSlot = ::retakeSpecificSlot,
+    setColorFilter = ::setColorFilter,
     acceptCapturePreview = ::acceptCapturePreview,
     finishSession = ::finishSession,
     downloadResult = ::downloadResult,
@@ -213,6 +216,7 @@ data class BoothActions(
     val capturePhotoFile: (String) -> Unit = {},
     val retakePhoto: () -> Unit = {},
     val retakeSpecificSlot: (Int) -> Unit = {},
+    val setColorFilter: (ColorFilterType) -> Unit = {},
     val acceptCapturePreview: () -> Unit = {},
     val finishSession: () -> Unit = {},
     val downloadResult: () -> Unit = {},
@@ -901,10 +905,33 @@ fun TemplateSurface(
                 val photoPath = state.capturedPhotosBySlot[slot.sourceSlotIndex]
                     ?: if (slot.sourceSlotIndex == currentActiveSlot) state.capturedPhotoPath else null
                 if (photoPath != null) {
+                    val composeFilter = when (state.selectedColorFilter) {
+                        ColorFilterType.Normal -> null
+                        ColorFilterType.Bw -> ColorFilter.colorMatrix(
+                            ColorMatrix().apply { setToSaturation(0f) }
+                        )
+                        ColorFilterType.Vintage -> ColorFilter.colorMatrix(
+                            ColorMatrix(floatArrayOf(
+                                0.393f, 0.769f, 0.189f, 0f, 0f,
+                                0.349f, 0.686f, 0.168f, 0f, 0f,
+                                0.272f, 0.534f, 0.131f, 0f, 0f,
+                                0f,     0f,     0f,     1f, 0f
+                            ))
+                        )
+                        ColorFilterType.Cool -> ColorFilter.colorMatrix(
+                            ColorMatrix(floatArrayOf(
+                                0.8f, 0f,   0f,   0f, 0f,
+                                0f,   1.0f, 0f,   0f, 0f,
+                                0f,   0f,   1.2f, 0f, 0f,
+                                0f,   0f,   0f,   1f, 0f
+                            ))
+                        )
+                    }
                     AsyncImage(
                         model = File(photoPath),
                         contentDescription = "Slot ${slot.slotIndex}",
                         contentScale = ContentScale.Crop,
+                        colorFilter = composeFilter,
                         modifier = Modifier
                             .offset(x = x, y = y)
                             .size(w, h)

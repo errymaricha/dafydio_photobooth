@@ -71,6 +71,33 @@ class TemplateRenderedOutputComposer(private val context: Context) {
         }
 
         val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+        val androidFilter = when (state.selectedColorFilter) {
+            ColorFilterType.Normal -> null
+            ColorFilterType.Bw -> {
+                val cm = android.graphics.ColorMatrix().apply { setSaturation(0f) }
+                android.graphics.ColorMatrixColorFilter(cm)
+            }
+            ColorFilterType.Vintage -> {
+                val matrix = floatArrayOf(
+                    0.393f, 0.769f, 0.189f, 0f, 0f,
+                    0.349f, 0.686f, 0.168f, 0f, 0f,
+                    0.272f, 0.534f, 0.131f, 0f, 0f,
+                    0f,     0f,     0f,     1f, 0f
+                )
+                android.graphics.ColorMatrixColorFilter(matrix)
+            }
+            ColorFilterType.Cool -> {
+                val matrix = floatArrayOf(
+                    0.8f, 0f,   0f,   0f, 0f,
+                    0f,   1.0f, 0f,   0f, 0f,
+                    0f,   0f,   1.2f, 0f, 0f,
+                    0f,   0f,   0f,   1f, 0f
+                )
+                android.graphics.ColorMatrixColorFilter(matrix)
+            }
+        }
+        paint.colorFilter = androidFilter
+
         state.selectedTemplateSlots.sortedBy { it.slotIndex }.forEach { slot ->
             val photoPath = state.capturedPhotosBySlot[slot.sourceSlotIndex] ?: return@forEach
             val photo = decodeBitmap(photoPath) ?: return@forEach
