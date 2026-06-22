@@ -29,6 +29,8 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -37,6 +39,15 @@ import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Print
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -374,63 +385,347 @@ fun CustomTemplateScreen(state: BoothUiState, actions: BoothActions) {
 
 @Composable
 fun TemplatePreviewScreen(state: BoothUiState, actions: BoothActions) {
-    ScreenFrame(title = "Preview Template", state = state, actions = actions) {
-        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+    ScreenFrame(title = "Preview Template", state = state, actions = actions, scrollable = false) {
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val isTablet = maxWidth >= 900.dp
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(28.dp),
-                colors = CardDefaults.cardColors(containerColor = TemplatePickerUiTokens.glass),
-                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-            ) {
+            val scrollState = rememberScrollState()
+            Box(modifier = Modifier.fillMaxSize()) {
                 Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(Color(0xFFF4F7FF), Color.White, Color(0xFFFFF4F9)),
-                            ),
+                        .fillMaxSize()
+                        .then(
+                            if (isTablet) Modifier else Modifier.verticalScroll(scrollState)
                         )
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                        .padding(bottom = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text("Canvas Preview", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = TemplatePickerUiTokens.ink)
-                        Surface(shape = RoundedCornerShape(999.dp), color = TemplatePickerUiTokens.primary.copy(alpha = 0.12f)) {
-                            Text(
-                                text = state.selectedTemplatePaperSize ?: "-",
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = TemplatePickerUiTokens.primary,
-                                fontWeight = FontWeight.SemiBold,
+                    if (isTablet) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        ) {
+                            TemplatePreviewCanvasCard(
+                                state = state,
+                                isTablet = true,
+                                modifier = Modifier
+                                    .weight(1.2f)
+                                    .fillMaxHeight(),
+                            )
+                            TemplatePreviewControlsCard(
+                                state = state,
+                                actions = actions,
+                                isTablet = true,
+                                modifier = Modifier
+                                    .weight(0.8f)
+                                    .fillMaxHeight(),
+                            )
+                        }
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                            TemplatePreviewCanvasCard(
+                                state = state,
+                                isTablet = false,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            TemplatePreviewControlsCard(
+                                state = state,
+                                actions = actions,
+                                isTablet = false,
+                                modifier = Modifier.fillMaxWidth(),
                             )
                         }
                     }
-                    Text("Klik slot di preview untuk memilih area kerja yang aktif.", style = MaterialTheme.typography.bodySmall, color = TemplatePickerUiTokens.inkSoft)
-                    Text("Drag foto langsung di slot untuk custom letak foto.", style = MaterialTheme.typography.bodySmall, color = TemplatePickerUiTokens.primary)
-                    TemplateSurface(state)
-                    if (isTablet) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                            PickerInfoCard("Template", state.selectedTemplate ?: "-", Modifier.weight(1f))
-                            PickerInfoCard("Captured", "${state.capturedPhotosBySlot.size}/${state.templateSlotCount}", Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TemplatePreviewCanvasCard(
+    state: BoothUiState,
+    isTablet: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(28.dp),
+        colors = CardDefaults.cardColors(containerColor = TemplatePickerUiTokens.glass),
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+    ) {
+        Column(
+            modifier = (if (isTablet) Modifier.fillMaxSize() else Modifier.fillMaxWidth())
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(Color(0xFFF4F7FF), Color.White),
+                    ),
+                )
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Canvas Preview",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = TemplatePickerUiTokens.ink
+                )
+                Surface(
+                    shape = RoundedCornerShape(999.dp),
+                    color = TemplatePickerUiTokens.primary.copy(alpha = 0.12f)
+                ) {
+                    Text(
+                        text = state.selectedTemplatePaperSize ?: "-",
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = TemplatePickerUiTokens.primary,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+
+            TemplateSurface(
+                state = state,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(
+                        if (isTablet) Modifier.weight(1f) else Modifier.height(380.dp)
+                    )
+                    .clip(RoundedCornerShape(18.dp))
+            )
+        }
+    }
+}
+
+@Composable
+private fun TemplatePreviewControlsCard(
+    state: BoothUiState,
+    actions: BoothActions,
+    isTablet: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(28.dp),
+        colors = CardDefaults.cardColors(containerColor = TemplatePickerUiTokens.glass),
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+    ) {
+        Column(
+            modifier = (if (isTablet) Modifier.fillMaxSize() else Modifier.fillMaxWidth())
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(Color.White, Color(0xFFFFF4F9)),
+                    ),
+                )
+                .padding(18.dp),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(
+                    text = "Opsi Cetak & Detail Sesi",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = TemplatePickerUiTokens.ink
+                )
+
+                // 1. Toggle Print Switch
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    color = Color.White.copy(alpha = 0.8f),
+                    border = BorderStroke(1.dp, TemplatePickerUiTokens.border)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (state.defaultPrinting) TemplatePickerUiTokens.primary.copy(alpha = 0.12f) else Color.Gray.copy(alpha = 0.1f),
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Print,
+                                    contentDescription = "Print",
+                                    tint = if (state.defaultPrinting) TemplatePickerUiTokens.primary else Color.Gray,
+                                    modifier = Modifier.padding(8.dp)
+                                )
+                            }
+                            Column {
+                                Text(
+                                    text = "Cetak Foto Fisik",
+                                    fontWeight = FontWeight.Bold,
+                                    color = TemplatePickerUiTokens.ink,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                Text(
+                                    text = if (state.defaultPrinting) "Foto dicetak otomatis" else "Hanya simpan versi digital",
+                                    color = TemplatePickerUiTokens.inkSoft,
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                            }
                         }
-                    } else {
-                        Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                            PickerInfoCard("Template", state.selectedTemplate ?: "-", Modifier.fillMaxWidth())
-                            PickerInfoCard("Captured", "${state.capturedPhotosBySlot.size}/${state.templateSlotCount}", Modifier.fillMaxWidth())
+
+                        Switch(
+                            checked = state.defaultPrinting,
+                            onCheckedChange = actions.setDefaultPrinting,
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = TemplatePickerUiTokens.primary,
+                                uncheckedThumbColor = Color.White,
+                                uncheckedTrackColor = Color.Gray.copy(alpha = 0.4f)
+                            )
+                        )
+                    }
+                }
+
+                // 2. Copies Counter Widget
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    color = Color.White.copy(alpha = 0.8f),
+                    border = BorderStroke(1.dp, TemplatePickerUiTokens.border)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "Salinan Cetak Tambahan",
+                                fontWeight = FontWeight.Bold,
+                                color = if (state.defaultPrinting) TemplatePickerUiTokens.ink else TemplatePickerUiTokens.inkSoft,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Text(
+                                text = if (state.defaultPrinting) "Lembar cetakan ekstra" else "Aktifkan cetak fisik dulu",
+                                color = TemplatePickerUiTokens.inkSoft,
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        }
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            IconButton(
+                                onClick = {
+                                    val count = state.launchAdditionalPrintCount - 1
+                                    actions.updateLaunchAdditionalPrintCount(count.coerceAtLeast(0).toString())
+                                },
+                                enabled = state.defaultPrinting && state.launchAdditionalPrintCount > 0,
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .background(
+                                        if (state.defaultPrinting && state.launchAdditionalPrintCount > 0) TemplatePickerUiTokens.primary.copy(alpha = 0.12f) else Color.Gray.copy(alpha = 0.05f),
+                                        RoundedCornerShape(8.dp)
+                                    )
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Remove,
+                                    contentDescription = "Reduce",
+                                    tint = if (state.defaultPrinting && state.launchAdditionalPrintCount > 0) TemplatePickerUiTokens.primary else Color.Gray,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+
+                            Text(
+                                text = state.launchAdditionalPrintCount.toString(),
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = if (state.defaultPrinting) TemplatePickerUiTokens.ink else Color.Gray,
+                                modifier = Modifier.padding(horizontal = 6.dp)
+                            )
+
+                            IconButton(
+                                onClick = {
+                                    val count = state.launchAdditionalPrintCount + 1
+                                    actions.updateLaunchAdditionalPrintCount(count.coerceAtMost(10).toString())
+                                },
+                                enabled = state.defaultPrinting && state.launchAdditionalPrintCount < 10,
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .background(
+                                        if (state.defaultPrinting && state.launchAdditionalPrintCount < 10) TemplatePickerUiTokens.primary.copy(alpha = 0.12f) else Color.Gray.copy(alpha = 0.05f),
+                                        RoundedCornerShape(8.dp)
+                                    )
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = "Add",
+                                    tint = if (state.defaultPrinting && state.launchAdditionalPrintCount < 10) TemplatePickerUiTokens.primary else Color.Gray,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
                         }
                     }
-                    Button(
-                        onClick = actions.finishSession,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(20.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = TemplatePickerUiTokens.primary),
+                }
+
+                // 3. Ringkasan Sesi Card
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    color = Color.White.copy(alpha = 0.6f)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text("Finish", color = Color.White)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Icon(Icons.Default.Info, contentDescription = "Info", tint = TemplatePickerUiTokens.inkSoft, modifier = Modifier.size(16.dp))
+                            Text("Detail Sesi", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge, color = TemplatePickerUiTokens.inkSoft)
+                        }
+                        Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                            Text("Template", style = MaterialTheme.typography.bodySmall, color = TemplatePickerUiTokens.inkSoft)
+                            Text(state.selectedTemplate ?: "-", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = TemplatePickerUiTokens.ink)
+                        }
+                        Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                            Text("Foto Terisi", style = MaterialTheme.typography.bodySmall, color = TemplatePickerUiTokens.inkSoft)
+                            Text("${state.capturedPhotosBySlot.size}/${state.templateSlotCount}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = TemplatePickerUiTokens.ink)
+                        }
+                    }
+                }
+            }
+
+            // Finish Button
+            Button(
+                onClick = actions.finishSession,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
+                    .then(
+                        if (!isTablet) Modifier.padding(top = 16.dp) else Modifier
+                    ),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+                contentPadding = PaddingValues(0.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.horizontalGradient(
+                                colors = listOf(TemplatePickerUiTokens.primary, TemplatePickerUiTokens.purple)
+                            )
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(imageVector = Icons.Default.Check, contentDescription = "Check", tint = Color.White, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Finish", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 16.sp)
                     }
                 }
             }
