@@ -10,6 +10,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -23,6 +26,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -133,33 +140,70 @@ fun CapturePreviewScreen(state: BoothUiState, actions: BoothActions) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 12.dp)
+                        .then(
+                            if (isTablet) Modifier.widthIn(max = 500.dp) else Modifier.fillMaxWidth()
+                        )
+                        .padding(horizontal = 16.dp, vertical = 20.dp)
                         .clip(RoundedCornerShape(24.dp))
-                        .background(Color.White.copy(alpha = 0.85f))
-                        .border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(24.dp))
-                        .padding(16.dp)
+                        .background(Color.White.copy(alpha = 0.88f))
+                        .border(1.dp, Color.White.copy(alpha = 0.6f), RoundedCornerShape(24.dp))
+                        .padding(14.dp)
                 ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.fillMaxWidth()) {
                         OutlinedButton(
                             onClick = actions.retakePhoto,
                             enabled = !state.isLoading,
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(20.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF5B67FF)),
-                            border = BorderStroke(1.5.dp, Color(0xFF5B67FF).copy(alpha = 0.4f))
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(50.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = Color(0xFFEF4444)
+                            ),
+                            border = BorderStroke(1.5.dp, Color(0xFFEF4444).copy(alpha = 0.35f))
                         ) {
-                            Text("Retake", fontWeight = FontWeight.Bold)
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Retake",
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Retake", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                         }
+                        
                         Button(
                             onClick = actions.acceptCapturePreview,
                             enabled = !state.isLoading,
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(20.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5B67FF)),
-                            elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
+                            modifier = Modifier
+                                .weight(1.2f)
+                                .height(50.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color.Transparent
+                            ),
+                            contentPadding = PaddingValues(0.dp)
                         ) {
-                            Text("Use Photo", fontWeight = FontWeight.Bold, color = Color.White)
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(
+                                        Brush.horizontalGradient(
+                                            colors = listOf(Color(0xFF5B67FF), Color(0xFF8B5CF6))
+                                        )
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = "Use Photo",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Use Photo", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 15.sp)
+                                }
+                            }
                         }
                     }
                 }
