@@ -117,6 +117,7 @@ fun CapturePreviewScreen(state: BoothUiState, actions: BoothActions) {
                             )
                             CapturePreviewInfoCard(
                                 state = state,
+                                isTablet = true,
                                 modifier = Modifier
                                     .weight(0.8f)
                                     .fillMaxHeight(),
@@ -130,6 +131,7 @@ fun CapturePreviewScreen(state: BoothUiState, actions: BoothActions) {
                             )
                             CapturePreviewInfoCard(
                                 state = state,
+                                isTablet = false,
                                 modifier = Modifier.fillMaxWidth(),
                             )
                         }
@@ -436,6 +438,7 @@ private fun CapturePreviewCanvasCard(
 @Composable
 private fun CapturePreviewInfoCard(
     state: BoothUiState,
+    isTablet: Boolean,
     modifier: Modifier = Modifier,
 ) {
     Card(
@@ -445,8 +448,7 @@ private fun CapturePreviewInfoCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxSize()
+            modifier = (if (isTablet) Modifier.fillMaxSize() else Modifier.fillMaxWidth())
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(Color(0xFFF4F7FF), Color.White, Color(0xFFFFF4F9)),
@@ -484,7 +486,9 @@ private fun CapturePreviewInfoCard(
                 state = state,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f)
+                    .then(
+                        if (isTablet) Modifier.weight(1f) else Modifier.height(380.dp)
+                    )
                     .clip(RoundedCornerShape(18.dp))
             )
         }
