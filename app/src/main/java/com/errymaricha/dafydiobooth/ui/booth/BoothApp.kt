@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -356,6 +357,7 @@ fun BoothApp(
             launchViewModel.init(
                 deviceCode = state.deviceId,
                 apiKey = state.token,
+                isSilent = true,
             )
         }
     }
@@ -745,6 +747,7 @@ fun ScreenFrame(
     state: BoothUiState,
     actions: BoothActions,
     scrollable: Boolean = true,
+    loading: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val modifier = if (scrollable) {
@@ -757,57 +760,80 @@ fun ScreenFrame(
             .fillMaxSize()
             .padding(24.dp)
     }
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            if (state.step != BoothStep.Dashboard) {
-                OutlinedButton(onClick = actions.openDashboard) {
-                    Text("Home")
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = modifier,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                if (state.step != BoothStep.Dashboard) {
+                    OutlinedButton(onClick = actions.openDashboard) {
+                        Text("Home")
+                    }
                 }
             }
-        }
-        if (state.isLoading) {
-            CircularProgressIndicator()
-        }
-        state.errorMessage?.let { message ->
-            val isTemplateMappingError = message.contains("Template mapping invalid", ignoreCase = true)
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Column(
-                    modifier = Modifier.padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+            state.errorMessage?.let { message ->
+                val isTemplateMappingError = message.contains("Template mapping invalid", ignoreCase = true)
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text(
-                        text = if (isTemplateMappingError) "Template Mapping Error" else "Terjadi Kesalahan",
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        text = message,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                    )
-                    if (isTemplateMappingError) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                         Text(
-                            text = "Langkah: sync template ulang dari station, lalu pilih template lagi.",
+                            text = if (isTemplateMappingError) "Template Mapping Error" else "Terjadi Kesalahan",
                             color = MaterialTheme.colorScheme.onErrorContainer,
-                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            text = message,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                        )
+                        if (isTemplateMappingError) {
+                            Text(
+                                text = "Langkah: sync template ulang dari station, lalu pilih template lagi.",
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                        OutlinedButton(
+                            onClick = actions.retry,
+                            enabled = !state.isLoading,
+                        ) {
+                            Text("Retry")
+                        }
+                    }
+                }
+            }
+            content()
+        }
+        if (state.isLoading || loading) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.32f))
+                    .clickable(enabled = false) {},
+                contentAlignment = Alignment.Center
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = Color.White,
+                    tonalElevation = 8.dp,
+                    shadowElevation = 12.dp,
+                    modifier = Modifier.size(130.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(
+                            color = Color(0xFF5B67FF),
+                            strokeWidth = 4.dp
                         )
                     }
-                    OutlinedButton(
-                        onClick = actions.retry,
-                        enabled = !state.isLoading,
-                    ) {
-                        Text("Retry")
-                    }
                 }
             }
         }
-        content()
     }
 }
 

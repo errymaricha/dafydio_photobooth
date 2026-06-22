@@ -238,7 +238,7 @@ fun LaunchEventScreen(
                 launchState.error.contains("tidak terdaftar", ignoreCase = true)) -> "No WA tidak valid"
         else -> null
     }
-    ScreenFrame(title = "Launch Event", state = state, actions = actions) {
+    ScreenFrame(title = "Launch Event", state = state, actions = actions, loading = launchState.loading) {
         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
             val isTablet = maxWidth >= 900.dp
             val activeEvent = launchState.events.firstOrNull { it.eventId == launchState.selectedEventId }
@@ -266,9 +266,6 @@ fun LaunchEventScreen(
                         else -> LaunchUiTokens.warning
                     },
                 )
-                if (launchState.loading) {
-                    CircularProgressIndicator()
-                }
 
                 if (isTablet) {
                     Row(

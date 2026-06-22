@@ -140,11 +140,11 @@ class LaunchViewModel(
         }
     }
 
-    fun init(deviceCode: String, apiKey: String) {
+    fun init(deviceCode: String, apiKey: String, isSilent: Boolean = true) {
         approvalPollingJob?.cancel()
         viewModelScope.launch {
             runCatching {
-                _ui.update { it.copy(loading = true, error = null, message = null) }
+                _ui.update { it.copy(loading = !isSilent, error = null, message = null) }
                 val snapshot = sessionStateManager.snapshot()
                 val existingToken = snapshot.authToken.ifBlank { _ui.value.token.orEmpty() }
                 val (token, pricing) = if (existingToken.isNotBlank()) {
