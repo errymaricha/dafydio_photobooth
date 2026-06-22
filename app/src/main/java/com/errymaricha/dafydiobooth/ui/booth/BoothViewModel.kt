@@ -823,10 +823,12 @@ class BoothViewModel(
         }
         val session = sessionStateManager.snapshot()
         if (current.localOnlySession) {
+            val renderState = prepareStateForRender(current)
+            val renderedFile = renderedOutputComposer.compose(renderState)
             _state.update {
                 it.copy(
                     step = BoothStep.Finish,
-                    eventStatusMessage = "Session selesai (local-only mode). Tidak ada data dikirim ke Photobooth Station.",
+                    eventStatusMessage = if (renderedFile != null) "Session selesai (local-only mode). Hasil disimpan secara lokal." else "Session selesai (local-only mode). Gagal menyimpan hasil.",
                     errorMessage = null,
                 )
             }
@@ -874,10 +876,12 @@ class BoothViewModel(
             return@launchRequest
         }
         if (!current.isStationConnected || session.sessionId.isNullOrBlank()) {
+            val renderState = prepareStateForRender(current)
+            val renderedFile = renderedOutputComposer.compose(renderState)
             _state.update {
                 it.copy(
                     step = BoothStep.Finish,
-                    eventStatusMessage = "Preview selesai (mode lokal).",
+                    eventStatusMessage = if (renderedFile != null) "Preview selesai. Hasil disimpan secara lokal." else "Preview selesai. Gagal menyimpan hasil.",
                     errorMessage = null,
                 )
             }
