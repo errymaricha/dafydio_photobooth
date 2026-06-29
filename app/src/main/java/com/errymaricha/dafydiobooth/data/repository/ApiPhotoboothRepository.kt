@@ -355,8 +355,9 @@ class ApiPhotoboothRepository(
     }
 
     private fun parseSessionPhotoId(payload: String): String? {
-        if (payload.isBlank()) return null
-        val element = runCatching { json.parseToJsonElement(payload) }.getOrNull() as? JsonObject ?: return null
+        val cleaned = payload.trim().removePrefix("\uFEFF")
+        if (cleaned.isBlank()) return null
+        val element = runCatching { json.parseToJsonElement(cleaned) }.getOrNull() as? JsonObject ?: return null
         val data = element["data"] as? JsonObject
         val sessionPhoto = element["session_photo"] as? JsonObject
         val dataSessionPhoto = data?.get("session_photo") as? JsonObject
