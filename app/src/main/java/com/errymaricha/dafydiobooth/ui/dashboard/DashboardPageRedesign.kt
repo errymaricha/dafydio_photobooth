@@ -90,7 +90,7 @@ import com.errymaricha.dafydiobooth.ui.theme.DafydioBoothTheme
 import com.errymaricha.dafydiobooth.ui.events.EventsPageRedesign
 import java.io.File
 import com.errymaricha.dafydiobooth.ui.memory.RecentMomentsPage
-import com.errymaricha.dafydiobooth.ui.launch.LaunchEventNavHostDemo
+import com.errymaricha.dafydiobooth.ui.launch.LaunchPageRedesign
 import com.errymaricha.dafydiobooth.ui.launch.LaunchUiState
 import com.errymaricha.dafydiobooth.ui.setup.SetupPageRedesign
 import com.errymaricha.dafydiobooth.ui.template.ViewAllTemplatesScreen
@@ -218,11 +218,12 @@ fun DashboardRedesignContainer(
             onViewAllTemplates = { destination = DashboardRedesignDestination.Templates },
         )
 
-        DashboardRedesignDestination.Launch -> LaunchEventNavHostDemo(
-            modifier = Modifier.fillMaxSize(),
-            kioskExitCode = state.kioskExitCode,
-            welcomeBgUri = state.welcomeBgUri,
-            welcomeBgIsVideo = state.welcomeBgIsVideo,
+        DashboardRedesignDestination.Launch -> LaunchPageRedesign(
+            state = state,
+            launchState = launchState,
+            actions = actions,
+            launchActions = launchActions,
+            onBackToDashboard = { destination = DashboardRedesignDestination.Dashboard },
         )
 
         DashboardRedesignDestination.Memory -> Scaffold(
@@ -258,6 +259,7 @@ fun DashboardRedesignContainer(
                     launchState = launchState,
                     actions = actions,
                     launchActions = launchActions,
+                    isShortcutMode = false,
                 )
             }
         }
@@ -548,7 +550,7 @@ private fun HeroSection(
                 welcomeBgUri = state.welcomeBgUri,
                 welcomeBgIsVideo = state.welcomeBgIsVideo,
                 onOpenLaunch = onOpenLaunch,
-                onOpenEvents = onOpenEvents,
+                onOpenEvents = actions.openSettingEvent,
             )
             StartSessionCard(
                 isMobile = true,
@@ -591,7 +593,7 @@ private fun HeroSection(
                     welcomeBgUri = state.welcomeBgUri,
                     welcomeBgIsVideo = state.welcomeBgIsVideo,
                     onOpenLaunch = onOpenLaunch,
-                    onOpenEvents = onOpenEvents,
+                    onOpenEvents = actions.openSettingEvent,
                 )
                 EventDeck(
                     isMobile = false,

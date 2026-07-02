@@ -84,6 +84,8 @@ class MainActivity : ComponentActivity() {
             stationBaseUrlProvider = { sessionStateManager.snapshot().stationIp },
             tokenProvider = { sessionStateManager.snapshot().authToken.ifBlank { sessionStateManager.snapshot().apiKey } },
             deviceIdProvider = { sessionStateManager.snapshot().deviceId },
+            readTimeoutMillis = 20_000L,
+            writeTimeoutMillis = 30_000L,
         )
         val repository = ApiPhotoboothRepository(api)
         val launchRepository = LaunchRepositoryImpl(api)
@@ -126,6 +128,8 @@ class MainActivity : ComponentActivity() {
             checkLaunchPayment = CheckLaunchPaymentUseCase(launchRepository),
             calculateFinalAmount = CalculateFinalAmountUseCase(),
             sessionStateManager = sessionStateManager,
+            appContext = applicationContext,
+            configStore = configStore,
         )
 
         setContent {

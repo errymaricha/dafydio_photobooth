@@ -158,4 +158,33 @@ class PhotoboothMapperTest {
         assertEquals("Bukti transfer tidak valid", domain.rejectionReason)
         assertEquals(false, domain.canUpload)
     }
+
+    @Test
+    fun `update device event request serializes cloud_enabled as false`() {
+        val request = UpdateDeviceEventRequest(
+            cloudEnabled = false
+        )
+        val body = json.encodeToString(UpdateDeviceEventRequest.serializer(), request)
+        val parsed = kotlinx.serialization.json.Json.parseToJsonElement(body).jsonObject
+        assertEquals("false", parsed.getValue("cloud_enabled").jsonPrimitive.content)
+    }
+
+    @Test
+    fun `update device event request omits unspecified nullable fields`() {
+        val request = UpdateDeviceEventRequest(
+            eventName = "HBD DAFYDIO",
+            cloudEnabled = false
+        )
+        val body = json.encodeToString(UpdateDeviceEventRequest.serializer(), request)
+        val parsed = kotlinx.serialization.json.Json.parseToJsonElement(body).jsonObject
+        
+        assertEquals("HBD DAFYDIO", parsed.getValue("event_name").jsonPrimitive.content)
+        assertEquals("false", parsed.getValue("cloud_enabled").jsonPrimitive.content)
+        
+        // Assert other fields are omitted/not present
+        assertTrue(parsed.containsKey("event_code").not())
+        assertTrue(parsed.containsKey("cloud_upload_mode").not())
+        assertTrue(parsed.containsKey("cloud_sync_timing").not())
+        assertTrue(parsed.containsKey("cloud_template_marketplace_enabled").not())
+    }
 }

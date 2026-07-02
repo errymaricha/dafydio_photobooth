@@ -1,7 +1,10 @@
 package com.errymaricha.dafydiobooth.ui.launch
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.errymaricha.dafydiobooth.data.local.DeviceConfigStore
+import com.errymaricha.dafydiobooth.data.local.PersistentWelcomeConfigStore
 import com.errymaricha.dafydiobooth.data.session.SessionStateManager
 import com.errymaricha.dafydiobooth.domain.usecase.CalculateFinalAmountUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.CheckLaunchPaymentUseCase
@@ -13,6 +16,7 @@ import com.errymaricha.dafydiobooth.domain.usecase.RequestLaunchPaymentQuoteUseC
 import com.errymaricha.dafydiobooth.domain.usecase.SyncLaunchPricingUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.UpdateLaunchEventUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.VerifyLaunchVoucherUseCase
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,6 +38,8 @@ class LaunchViewModel(
     private val checkLaunchPayment: CheckLaunchPaymentUseCase,
     private val calculateFinalAmount: CalculateFinalAmountUseCase,
     private val sessionStateManager: SessionStateManager,
+    private val appContext: Context,
+    private val configStore: DeviceConfigStore,
 ) : ViewModel() {
     private val _ui = MutableStateFlow(LaunchUiState())
     val ui: StateFlow<LaunchUiState> = _ui.asStateFlow()
@@ -91,6 +97,10 @@ class LaunchViewModel(
         _ui.update { it.copy(eventNameInput = value, error = null) }
     }
 
+    fun onCloudEnabledChanged(value: Boolean) {
+        _ui.update { it.copy(cloudEnabledInput = value, error = null) }
+    }
+
     fun onSelectEvent(eventId: String) {
         val selected = _ui.value.events.firstOrNull { it.eventId == eventId }
         _ui.update {
@@ -98,6 +108,7 @@ class LaunchViewModel(
                 selectedEventId = eventId,
                 eventCodeInput = selected?.eventCode ?: it.eventCodeInput,
                 eventNameInput = selected?.eventName ?: it.eventNameInput,
+                cloudEnabledInput = selected?.cloudEnabled ?: true,
                 error = null,
             )
         }
@@ -120,6 +131,18 @@ class LaunchViewModel(
                     selected.isNotBlank() && events.any { it.eventId == selected }
                 } ?: events.firstOrNull()?.eventId.orEmpty()
                 val selectedEvent = events.firstOrNull { it.eventId == selectedEventId }
+
+                // Sync/Restore welcome background config from persistent JSON map to DataStore
+                viewModelScope.launch(Dispatchers.IO) {
+                    events.forEach { event ->
+                        val mapping = PersistentWelcomeConfigStore.getMapping(appContext, event.eventCode)
+                        if (mapping != null) {
+                            val (bgUri, isVideo) = mapping
+                            configStore.saveWelcomeBgForEvent(event.eventId, bgUri, isVideo)
+                        }
+                    }
+                }
+
                 _ui.update {
                     it.copy(
                         loading = false,
@@ -127,6 +150,7 @@ class LaunchViewModel(
                         selectedEventId = selectedEventId,
                         eventCodeInput = selectedEvent?.eventCode ?: it.eventCodeInput,
                         eventNameInput = selectedEvent?.eventName ?: it.eventNameInput,
+                        cloudEnabledInput = selectedEvent?.cloudEnabled ?: true,
                         message = if (events.isEmpty()) "Belum ada event di station." else "Daftar event berhasil disinkronkan.",
                     )
                 }
@@ -166,6 +190,18 @@ class LaunchViewModel(
                     _ui.value.additionalPrintCount,
                 )
                 val events = runCatching { listLaunchEvents(token) }.getOrDefault(emptyList())
+
+                // Sync/Restore welcome background config from persistent JSON map to DataStore
+                viewModelScope.launch(Dispatchers.IO) {
+                    events.forEach { event ->
+                        val mapping = PersistentWelcomeConfigStore.getMapping(appContext, event.eventCode)
+                        if (mapping != null) {
+                            val (bgUri, isVideo) = mapping
+                            configStore.saveWelcomeBgForEvent(event.eventId, bgUri, isVideo)
+                        }
+                    }
+                }
+
                 val selectedEventId = _ui.value.selectedEventId.takeIf { selected ->
                     selected.isNotBlank() && events.any { it.eventId == selected }
                 } ?: events.firstOrNull()?.eventId.orEmpty()
@@ -185,6 +221,7 @@ class LaunchViewModel(
                         selectedEventId = selectedEventId,
                         eventCodeInput = selectedEvent?.eventCode ?: it.eventCodeInput,
                         eventNameInput = selectedEvent?.eventName ?: it.eventNameInput,
+                        cloudEnabledInput = selectedEvent?.cloudEnabled ?: true,
                     )
                 }
             }.onFailure { error ->
@@ -214,6 +251,7 @@ class LaunchViewModel(
                         token = token,
                         eventCode = current.eventCodeInput,
                         eventName = current.eventNameInput,
+                        cloudEnabled = current.cloudEnabledInput,
                     )
                 } else {
                     updateLaunchEvent(
@@ -221,6 +259,7 @@ class LaunchViewModel(
                         eventId = current.selectedEventId,
                         eventCode = current.eventCodeInput,
                         eventName = current.eventNameInput,
+                        cloudEnabled = current.cloudEnabledInput,
                     )
                 }
             }.onSuccess { saved ->
@@ -235,6 +274,7 @@ class LaunchViewModel(
                         selectedEventId = saved.eventId,
                         eventCodeInput = saved.eventCode,
                         eventNameInput = saved.eventName,
+                        cloudEnabledInput = saved.cloudEnabled,
                         message = "Event ${saved.eventCode} tersimpan.",
                         error = null,
                     )
@@ -525,6 +565,24 @@ class LaunchViewModel(
                 false
             },
         )
+    }
+
+    fun resetSessionState() {
+        approvalPollingJob?.cancel()
+        _ui.update {
+            it.copy(
+                session = null,
+                approvalStatus = null,
+                voucherCode = "",
+                voucher = null,
+                quote = null,
+                error = null,
+                message = null,
+                loading = false,
+                shouldNavigateToTemplates = false,
+                customerWhatsapp = "",
+            )
+        }
     }
 
     override fun onCleared() {

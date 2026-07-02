@@ -22,8 +22,11 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
 import retrofit2.HttpException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.delay
 
 class LaunchRepositoryImpl(
@@ -31,8 +34,8 @@ class LaunchRepositoryImpl(
 ) : LaunchRepository {
     private val json = Json { ignoreUnknownKeys = true }
 
-    override suspend fun login(deviceCode: String, apiKey: String): String {
-        return api.auth(
+    override suspend fun login(deviceCode: String, apiKey: String): String = withContext(Dispatchers.IO) {
+        api.auth(
             DeviceAuthRequest(
                 deviceCode = deviceCode,
                 apiKey = apiKey,
@@ -40,18 +43,18 @@ class LaunchRepositoryImpl(
         ).token
     }
 
-    override suspend fun syncPricing(token: String): LaunchPricing {
+    override suspend fun syncPricing(token: String): LaunchPricing = withContext(Dispatchers.IO) {
         val response = api.getMasterData("Bearer $token")
-        return LaunchPricing(
+        LaunchPricing(
             photoboothPrice = response.pricing.photoboothPrice,
             additionalPrintPrice = response.pricing.additionalPrintPrice,
             currencyCode = response.pricing.currencyCode,
         )
     }
 
-    override suspend fun listEvents(token: String): List<LaunchEvent> {
+    override suspend fun listEvents(token: String): List<LaunchEvent> = withContext(Dispatchers.IO) {
         val payload = api.listEvents(bearerToken = "Bearer $token")
-        return decodeEventList(payload).map { it.toDomain() }
+        decodeEventList(payload).map { it.toDomain() }
     }
 
     override suspend fun createEvent(
@@ -62,7 +65,7 @@ class LaunchRepositoryImpl(
         cloudUploadMode: String,
         cloudSyncTiming: String,
         cloudTemplateMarketplaceEnabled: Boolean,
-    ): LaunchEvent {
+    ): LaunchEvent = withContext(Dispatchers.IO) {
         val payload = api.createEvent(
             bearerToken = "Bearer $token",
             request = CreateDeviceEventRequest(
@@ -74,7 +77,7 @@ class LaunchRepositoryImpl(
                 cloudTemplateMarketplaceEnabled = cloudTemplateMarketplaceEnabled,
             ),
         )
-        return decodeSingleEvent(payload).toDomain()
+        decodeSingleEvent(payload).toDomain()
     }
 
     override suspend fun updateEvent(
@@ -82,11 +85,11 @@ class LaunchRepositoryImpl(
         eventId: String,
         eventCode: String,
         eventName: String,
-        cloudEnabled: Boolean,
-        cloudUploadMode: String,
-        cloudSyncTiming: String,
-        cloudTemplateMarketplaceEnabled: Boolean,
-    ): LaunchEvent {
+        cloudEnabled: Boolean?,
+        cloudUploadMode: String?,
+        cloudSyncTiming: String?,
+        cloudTemplateMarketplaceEnabled: Boolean?,
+    ): LaunchEvent = withContext(Dispatchers.IO) {
         val payload = api.updateEvent(
             eventId = eventId,
             bearerToken = "Bearer $token",
@@ -99,7 +102,7 @@ class LaunchRepositoryImpl(
                 cloudTemplateMarketplaceEnabled = cloudTemplateMarketplaceEnabled,
             ),
         )
-        return decodeSingleEvent(payload).toDomain()
+        decodeSingleEvent(payload).toDomain()
     }
 
     override suspend fun openSessionManual(
@@ -108,18 +111,17 @@ class LaunchRepositoryImpl(
         customerWhatsapp: String,
         voucherCode: String,
         additionalPrintCount: Int,
-    ): LaunchSession {
-        return try {
+    ): LaunchSession = withContext(Dispatchers.IO) {
+        try {
             val normalizedWhatsapp = normalizeWhatsapp(customerWhatsapp)
             val response = api.openSession(
                 bearerToken = "Bearer $token",
                 request = OpenManualSessionRequest(
-                // Empty string signals "use station default customer WA" on station side.
-                customerWhatsapp = normalizedWhatsapp ?: "",
-                eventId = eventId.ifBlank { null },
-                voucherCode = voucherCode.ifBlank { null },
-                paymentMethod = "manual",
-                additionalPrintCount = additionalPrintCount.coerceAtLeast(0),
+                    customerWhatsapp = normalizedWhatsapp ?: "",
+                    eventId = eventId.ifBlank { null },
+                    voucherCode = voucherCode.ifBlank { null },
+                    paymentMethod = "manual",
+                    additionalPrintCount = additionalPrintCount.coerceAtLeast(0),
                 ),
             )
             LaunchSession(
@@ -145,8 +147,8 @@ class LaunchRepositoryImpl(
         token: String,
         voucherCode: String,
         subtotalAmount: Long,
-    ): VoucherVerification {
-        return mapVoucherErrors {
+    ): VoucherVerification = withContext(Dispatchers.IO) {
+        mapVoucherErrors {
             api.verifyVoucher(
                 request = VerifyVoucherRequest(
                     contractVersion = CONTRACT_VERSION,
@@ -164,8 +166,8 @@ class LaunchRepositoryImpl(
         token: String,
         voucherCode: String,
         subtotalAmount: Long,
-    ): PaymentQuote {
-        return mapVoucherErrors {
+    ): PaymentQuote = withContext(Dispatchers.IO) {
+        mapVoucherErrors {
             api.paymentQuote(
                 request = PaymentQuoteRequest(
                     contractVersion = CONTRACT_VERSION,
@@ -183,7 +185,7 @@ class LaunchRepositoryImpl(
     override suspend fun checkPayment(
         token: String,
         sessionId: String,
-    ): LaunchPaymentStatus {
+    ): LaunchPaymentStatus = withContext(Dispatchers.IO) {
         val response = api.paymentCheck(
             sessionId = sessionId,
             bearerToken = "Bearer $token",
@@ -196,7 +198,7 @@ class LaunchRepositoryImpl(
             response.paymentApprovalStatus,
             response.status,
         ).firstOrNull { it.isNullOrBlank().not() }
-        return LaunchPaymentStatus(
+        LaunchPaymentStatus(
             sessionId = response.sessionId,
             sessionCode = response.sessionCode,
             customerId = response.customerId,
@@ -231,8 +233,9 @@ class LaunchRepositoryImpl(
         var shouldRetry = true
         var retryCount = 0
         while (shouldRetry) {
+            var responseBody: okhttp3.ResponseBody? = null
             try {
-                val responseBody = api.paymentCheckSse(
+                responseBody = api.paymentCheckSse(
                     sessionId = sessionId,
                     bearerToken = "Bearer $token"
                 )
@@ -293,17 +296,20 @@ class LaunchRepositoryImpl(
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 e.printStackTrace()
+            } finally {
+                // Always close the response body to release the server connection thread
+                runCatching { responseBody?.close() }
             }
             
             if (shouldRetry) {
-                delay(2500)
+                delay(3000)
                 retryCount++
-                if (retryCount > 100) {
+                if (retryCount > 30) {
                     shouldRetry = false
                 }
             }
         }
-    }
+    }.flowOn(Dispatchers.IO)
 
     private companion object {
         const val CONTRACT_VERSION = "2026-04-17"
@@ -389,10 +395,11 @@ class LaunchRepositoryImpl(
             json.decodeFromJsonElement(payload)
         } catch (_: SerializationException) {
             val data = (payload as? JsonObject)?.get("data")
+                ?: (payload as? JsonObject)?.get("event")
             if (data != null) {
                 json.decodeFromJsonElement(data)
             } else {
-                throw IllegalStateException("Format event tidak dikenali.")
+                throw IllegalStateException("Format response event tidak dikenali.")
             }
         }
     }

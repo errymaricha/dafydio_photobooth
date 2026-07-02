@@ -1,7 +1,9 @@
 package com.errymaricha.dafydiobooth.ui.launch
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import com.errymaricha.dafydiobooth.data.local.DeviceConfigStore
 import com.errymaricha.dafydiobooth.data.session.SessionStateManager
 import com.errymaricha.dafydiobooth.domain.usecase.CalculateFinalAmountUseCase
 import com.errymaricha.dafydiobooth.domain.usecase.CheckLaunchPaymentUseCase
@@ -26,6 +28,8 @@ class LaunchViewModelFactory(
     private val checkLaunchPayment: CheckLaunchPaymentUseCase,
     private val calculateFinalAmount: CalculateFinalAmountUseCase,
     private val sessionStateManager: SessionStateManager,
+    private val appContext: Context,
+    private val configStore: DeviceConfigStore,
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -42,6 +46,8 @@ class LaunchViewModelFactory(
                 checkLaunchPayment = checkLaunchPayment,
                 calculateFinalAmount = calculateFinalAmount,
                 sessionStateManager = sessionStateManager,
+                appContext = appContext,
+                configStore = configStore,
             ) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")

@@ -15,6 +15,7 @@ data class LaunchUiState(
     val selectedEventId: String = "",
     val eventCodeInput: String = "",
     val eventNameInput: String = "",
+    val cloudEnabledInput: Boolean = true,
     val customerWhatsapp: String = "",
     val voucherCode: String = "",
     val voucher: VoucherVerification? = null,

@@ -112,18 +112,18 @@ private class FakeLaunchRepository : LaunchRepository {
         eventId: String,
         eventCode: String,
         eventName: String,
-        cloudEnabled: Boolean,
-        cloudUploadMode: String,
-        cloudSyncTiming: String,
-        cloudTemplateMarketplaceEnabled: Boolean,
+        cloudEnabled: Boolean?,
+        cloudUploadMode: String?,
+        cloudSyncTiming: String?,
+        cloudTemplateMarketplaceEnabled: Boolean?,
     ): LaunchEvent = LaunchEvent(
         eventId = eventId,
         eventCode = eventCode,
         eventName = eventName,
-        cloudEnabled = cloudEnabled,
-        cloudUploadMode = cloudUploadMode,
-        cloudSyncTiming = cloudSyncTiming,
-        cloudTemplateMarketplaceEnabled = cloudTemplateMarketplaceEnabled,
+        cloudEnabled = cloudEnabled ?: false,
+        cloudUploadMode = cloudUploadMode.orEmpty(),
+        cloudSyncTiming = cloudSyncTiming.orEmpty(),
+        cloudTemplateMarketplaceEnabled = cloudTemplateMarketplaceEnabled ?: false,
     )
 
     override suspend fun verifyVoucher(

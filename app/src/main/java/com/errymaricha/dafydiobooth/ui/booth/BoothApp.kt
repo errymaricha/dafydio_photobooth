@@ -196,6 +196,11 @@ private fun BoothViewModel.toActions() = BoothActions(
     onStepChanged = ::onStepChanged,
     setWelcomeBgUri = ::setWelcomeBgUri,
     setWelcomeBgIsVideo = ::setWelcomeBgIsVideo,
+    setPrinterMarginTop = ::setPrinterMarginTop,
+    setPrinterMarginBottom = ::setPrinterMarginBottom,
+    setPrinterMarginLeft = ::setPrinterMarginLeft,
+    setPrinterMarginRight = ::setPrinterMarginRight,
+    setPrinterScaleMode = ::setPrinterScaleMode,
 )
 
 data class BoothActions(
@@ -270,6 +275,11 @@ data class BoothActions(
     val onStepChanged: (BoothStep) -> Unit = {},
     val setWelcomeBgUri: (String) -> Unit = {},
     val setWelcomeBgIsVideo: (Boolean) -> Unit = {},
+    val setPrinterMarginTop: (Float) -> Unit = {},
+    val setPrinterMarginBottom: (Float) -> Unit = {},
+    val setPrinterMarginLeft: (Float) -> Unit = {},
+    val setPrinterMarginRight: (Float) -> Unit = {},
+    val setPrinterScaleMode: (String) -> Unit = {},
 )
 
 private fun LaunchViewModel.toActions() = LaunchActions(
@@ -285,6 +295,8 @@ private fun LaunchViewModel.toActions() = LaunchActions(
     quoteQrPayment = ::quoteQrPayment,
     submitManualPaymentRequest = ::submitManualPaymentRequest,
     checkManualPaymentApproval = ::checkManualPaymentApproval,
+    consumeTemplateNavigation = ::consumeTemplateNavigation,
+    resetSessionState = ::resetSessionState,
 )
 
 data class LaunchActions(
@@ -300,6 +312,8 @@ data class LaunchActions(
     val quoteQrPayment: () -> Unit = {},
     val submitManualPaymentRequest: () -> Unit = {},
     val checkManualPaymentApproval: () -> Unit = {},
+    val consumeTemplateNavigation: () -> Unit = {},
+    val resetSessionState: () -> Unit = {},
 )
 
 @Composable
@@ -489,6 +503,7 @@ fun BoothApp(
                     launchState = launchState,
                     actions = actions,
                     launchActions = launchActions,
+                    isShortcutMode = true,
                 )
             }
             composable(BoothRoute.SettingAllowedTemplates.route) {
@@ -874,8 +889,12 @@ fun TemplateSurface(
         state.selectedTemplateSlots.map { it.sourceSlotIndex }.distinct().sorted()
     }
     val currentActiveSlot = remember(orderedSlots, state.nextCaptureIndex) {
-        val index = (state.nextCaptureIndex - 1).coerceIn(0, orderedSlots.lastIndex)
-        if (orderedSlots.isNotEmpty()) orderedSlots[index] else -1
+        if (orderedSlots.isNotEmpty()) {
+            val index = (state.nextCaptureIndex - 1).coerceIn(0, orderedSlots.lastIndex)
+            orderedSlots[index]
+        } else {
+            -1
+        }
     }
     val localPreview = state.selectedTemplatePreviewLocalPath
         ?.takeIf { it.isNotBlank() }

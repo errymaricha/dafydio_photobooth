@@ -33,6 +33,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.MutableState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -173,12 +175,14 @@ fun EventsPageRedesign(
     launchState: LaunchUiState,
     actions: BoothActions,
     launchActions: LaunchActions,
+    isShortcutMode: Boolean = false,
 ) {
     SettingEventScreen(
         state = state,
         launchState = launchState,
         actions = actions,
         launchActions = launchActions,
+        isShortcutMode = isShortcutMode,
     )
 }
 
@@ -331,17 +335,26 @@ fun SettingEventScreen(
     launchState: LaunchUiState,
     actions: BoothActions,
     launchActions: LaunchActions,
+    isShortcutMode: Boolean = false,
 ) {
-    ScreenFrame(title = "Setting Event", state = state, actions = actions) {
+    ScreenFrame(title = if (isShortcutMode) "Setting Event Aktif" else "Event Manager", state = state, actions = actions) {
         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
             val isTablet = maxWidth >= 900.dp
             val activeEvent = launchState.events.firstOrNull { it.eventId == launchState.selectedEventId }
 
+            val marginLeftText = remember(state.printerMarginLeft) { mutableStateOf(if (state.printerMarginLeft == 0.0f) "" else state.printerMarginLeft.toString()) }
+            val marginRightText = remember(state.printerMarginRight) { mutableStateOf(if (state.printerMarginRight == 0.0f) "" else state.printerMarginRight.toString()) }
+            val marginTopText = remember(state.printerMarginTop) { mutableStateOf(if (state.printerMarginTop == 0.0f) "" else state.printerMarginTop.toString()) }
+            val marginBottomText = remember(state.printerMarginBottom) { mutableStateOf(if (state.printerMarginBottom == 0.0f) "" else state.printerMarginBottom.toString()) }
+
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 EventStatus(state)
                 EventsHeroCard(
-                    title = "Event Setup",
-                    subtitle = "Kelola event station, event aktif, welcome screen, template access, dan output print.",
+                    title = if (isShortcutMode) "Event Setup" else "Event Manager",
+                    subtitle = if (isShortcutMode)
+                        "Atur konfigurasi default session prefill, welcome screen background, dan printer output untuk event yang aktif."
+                    else
+                        "Kelola daftar event di station lokal, pilih event aktif, atau buat event baru.",
                     badge = if (state.isStationReachable) "SYNCED" else "OFFLINE",
                     badgeAccent = if (state.isStationReachable) EventsUiTokens.success else EventsUiTokens.warning,
                 )
@@ -360,34 +373,33 @@ fun SettingEventScreen(
                             modifier = Modifier.weight(0.95f),
                             verticalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
-                            EventSectionCard(title = "General Event") {
-                                OutlinedTextField(value = launchState.eventCodeInput, onValueChange = launchActions.onEventCodeChanged, label = { Text("Event Code") }, placeholder = { Text("HBD-DAFYDIO-001") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                                OutlinedTextField(value = launchState.eventNameInput, onValueChange = launchActions.onEventNameChanged, label = { Text("Event Name") }, placeholder = { Text("ULANG TAHUN DAFYDIO") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                                    Button(onClick = launchActions.createOrUpdateEvent, enabled = !launchState.loading && state.isStationReachable, modifier = Modifier.weight(1f)) {
+                            if (!isShortcutMode) {
+                                EventSectionCard(title = "General Event Setup") {
+                                    OutlinedTextField(value = launchState.eventCodeInput, onValueChange = launchActions.onEventCodeChanged, label = { Text("Event Code") }, placeholder = { Text("HBD-DAFYDIO-001") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                                    OutlinedTextField(value = launchState.eventNameInput, onValueChange = launchActions.onEventNameChanged, label = { Text("Event Name") }, placeholder = { Text("ULANG TAHUN DAFYDIO") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                                    Button(
+                                        onClick = launchActions.createOrUpdateEvent,
+                                        enabled = !launchState.loading && state.isStationReachable,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
                                         Text(if (launchState.selectedEventId.isBlank()) "Create Event" else "Update Event")
-                                    }
-                                    OutlinedButton(onClick = actions.openLaunchEvent, enabled = state.isStationReachable, modifier = Modifier.weight(1f)) {
-                                        Text("Open Launch Event")
                                     }
                                 }
                             }
-                            EventSectionCard(title = "Default Customer") {
-                                OutlinedTextField(value = state.customerWhatsapp, onValueChange = actions.updateCustomerWhatsapp, label = { Text("Nomor Customer / WA") }, placeholder = { Text("628123456789") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.fillMaxWidth())
-                                OutlinedTextField(value = state.launchAdditionalPrintCount.toString(), onValueChange = actions.updateLaunchAdditionalPrintCount, label = { Text("Default Additional Print") }, placeholder = { Text("0") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.fillMaxWidth())
-                            }
-                            EventSectionCard(title = "Default Voucher Prefill") {
-                                OutlinedTextField(value = state.voucherCode, onValueChange = actions.updateVoucherCode, label = { Text("Default Voucher Code") }, placeholder = { Text("Kosong jika tidak ada voucher") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                            }
-                            EventSectionCard(title = "Cloud Settings") {
-                                EventMetaChip(
-                                    label = if (activeEvent?.cloudEnabled == true) "Cloud Enabled" else "Cloud Disabled",
-                                    accent = if (activeEvent?.cloudEnabled == true) EventsUiTokens.success else EventsUiTokens.warning,
-                                )
-                                Text(
-                                    text = "Cloud setting mengikuti event aktif dari station.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = EventsUiTokens.inkSoft,
+                            if (isShortcutMode) {
+                                EventSectionCard(title = "Default Session Prefills") {
+                                    OutlinedTextField(value = state.customerWhatsapp, onValueChange = actions.updateCustomerWhatsapp, label = { Text("Nomor Customer / WA") }, placeholder = { Text("628123456789") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.fillMaxWidth())
+                                    OutlinedTextField(value = state.launchAdditionalPrintCount.toString(), onValueChange = actions.updateLaunchAdditionalPrintCount, label = { Text("Default Additional Print") }, placeholder = { Text("0") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.fillMaxWidth())
+                                    Spacer(Modifier.height(4.dp))
+                                    OutlinedTextField(value = state.voucherCode, onValueChange = actions.updateVoucherCode, label = { Text("Default Voucher Code") }, placeholder = { Text("Kosong jika tidak ada voucher") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                                }
+                                PrintSettingsCard(
+                                    state = state,
+                                    actions = actions,
+                                    marginLeftText = marginLeftText,
+                                    marginRightText = marginRightText,
+                                    marginTopText = marginTopText,
+                                    marginBottomText = marginBottomText,
                                 )
                             }
                         }
@@ -395,145 +407,252 @@ fun SettingEventScreen(
                             modifier = Modifier.weight(1.05f),
                             verticalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
-                            WelcomeScreenConfigCard(
-                                state = state,
-                                activeEventName = activeEvent?.eventName ?: launchState.eventNameInput.ifBlank { "Welcome Event" },
-                                actions = actions,
-                            )
-                            EventSectionCard(title = "Pilih Event Aktif") {
-                                Text(text = "Event aktif: ${activeEvent?.eventName ?: "Belum dipilih"}", style = MaterialTheme.typography.bodySmall)
-                                OutlinedButton(onClick = launchActions.refreshEvents, enabled = !launchState.loading && state.isStationReachable, modifier = Modifier.fillMaxWidth()) {
-                                    Text("Sinkronkan Daftar Event")
-                                }
-                                if (launchState.events.isEmpty()) {
-                                    Text(
-                                        text = if (state.isStationReachable) "Belum ada event di station. Buat event baru, lalu sinkronkan daftar event." else "Hubungkan station dulu untuk mengambil daftar event.",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.error,
-                                    )
-                                } else {
-                                    LazyColumn(modifier = Modifier.fillMaxWidth().height(240.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        items(launchState.events, key = { it.eventId }) { event ->
-                                            EventSelectionRow(
-                                                title = event.eventName,
-                                                subtitle = "${event.eventCode} | cloud=${if (event.cloudEnabled) "on" else "off"} | sync=${event.cloudSyncTiming ?: "-"}",
-                                                selected = event.eventId == launchState.selectedEventId,
-                                                onSelect = {
-                                                    launchActions.onSelectEvent(event.eventId)
-                                                    actions.setLaunchSelectedEventId(event.eventId)
-                                                },
-                                            )
+                            if (isShortcutMode) {
+                                WelcomeScreenConfigCard(
+                                    state = state,
+                                    activeEventName = activeEvent?.eventName ?: launchState.eventNameInput.ifBlank { "Welcome Event" },
+                                    actions = actions,
+                                )
+                            }
+                            if (!isShortcutMode) {
+                                EventSectionCard(title = "Pilih Event Aktif") {
+                                    Text(text = "Event aktif: ${activeEvent?.eventName ?: "Belum dipilih"}", style = MaterialTheme.typography.bodySmall)
+                                    OutlinedButton(onClick = launchActions.refreshEvents, enabled = !launchState.loading && state.isStationReachable, modifier = Modifier.fillMaxWidth()) {
+                                        Text("Sinkronkan Daftar Event")
+                                    }
+                                    if (launchState.events.isEmpty()) {
+                                        Text(
+                                            text = if (state.isStationReachable) "Belum ada event di station. Buat event baru, lalu sinkronkan daftar event." else "Hubungkan station dulu untuk mengambil daftar event.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.error,
+                                        )
+                                    } else {
+                                        LazyColumn(modifier = Modifier.fillMaxWidth().height(380.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            items(launchState.events, key = { it.eventId }) { event ->
+                                                EventSelectionRow(
+                                                    title = event.eventName,
+                                                    subtitle = "${event.eventCode} | cloud=${if (event.cloudEnabled) "on" else "off"} | sync=${event.cloudSyncTiming ?: "-"}",
+                                                    selected = event.eventId == launchState.selectedEventId,
+                                                    onSelect = {
+                                                        launchActions.onSelectEvent(event.eventId)
+                                                        actions.setLaunchSelectedEventId(event.eventId)
+                                                    },
+                                                    onClickActive = actions.openSettingEvent,
+                                                )
+                                            }
                                         }
                                     }
-                                }
-                            }
-                            EventSectionCard(title = "Print Settings") {
-                                Text(
-                                    text = "Pilih output print default untuk event aktif.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = EventsUiTokens.inkSoft,
-                                )
-                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                                    Button(
-                                        onClick = { actions.setPrintUsePhotoboothStation(true) },
-                                        modifier = Modifier.weight(1f),
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = if (state.printUsePhotoboothStation) EventsUiTokens.primary else Color.White,
-                                            contentColor = if (state.printUsePhotoboothStation) Color.White else EventsUiTokens.ink,
-                                        ),
-                                    ) {
-                                        Text("Via Station")
-                                    }
-                                    OutlinedButton(
-                                        onClick = { actions.setPrintUsePhotoboothStation(false) },
-                                        modifier = Modifier.weight(1f),
-                                    ) {
-                                        Text("Android Printer")
-                                    }
-                                }
-                            }
-                            EventSectionCard(title = "Template Access") {
-                                Text(text = if (state.launchAllowedTemplateIds.isEmpty()) "Semua template diizinkan." else "${state.launchAllowedTemplateIds.size} template diizinkan.", style = MaterialTheme.typography.bodySmall)
-                                OutlinedButton(onClick = actions.openSettingAllowedTemplates, modifier = Modifier.fillMaxWidth()) {
-                                    Text("Buka Pengaturan Template Diizinkan")
                                 }
                             }
                         }
                     }
                 } else {
-                    EventSectionCard(title = "General Event") {
-                        OutlinedTextField(value = launchState.eventCodeInput, onValueChange = launchActions.onEventCodeChanged, label = { Text("Event Code") }, placeholder = { Text("HBD-DAFYDIO-001") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                        OutlinedTextField(value = launchState.eventNameInput, onValueChange = launchActions.onEventNameChanged, label = { Text("Event Name") }, placeholder = { Text("ULANG TAHUN DAFYDIO") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                            Button(onClick = launchActions.createOrUpdateEvent, enabled = !launchState.loading && state.isStationReachable, modifier = Modifier.weight(1f)) {
+                    // Mobile layout
+                    if (!isShortcutMode) {
+                        EventSectionCard(title = "General Event Setup") {
+                            OutlinedTextField(value = launchState.eventCodeInput, onValueChange = launchActions.onEventCodeChanged, label = { Text("Event Code") }, placeholder = { Text("HBD-DAFYDIO-001") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                            OutlinedTextField(value = launchState.eventNameInput, onValueChange = launchActions.onEventNameChanged, label = { Text("Event Name") }, placeholder = { Text("ULANG TAHUN DAFYDIO") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                            Button(
+                                onClick = launchActions.createOrUpdateEvent,
+                                enabled = !launchState.loading && state.isStationReachable,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
                                 Text(if (launchState.selectedEventId.isBlank()) "Create Event" else "Update Event")
                             }
-                            OutlinedButton(onClick = actions.openLaunchEvent, enabled = state.isStationReachable, modifier = Modifier.weight(1f)) {
-                                Text("Open Launch Event")
-                            }
                         }
                     }
-                    EventSectionCard(title = "Default Customer") {
-                        OutlinedTextField(value = state.customerWhatsapp, onValueChange = actions.updateCustomerWhatsapp, label = { Text("Nomor Customer / WA") }, placeholder = { Text("628123456789") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.fillMaxWidth())
-                        OutlinedTextField(value = state.launchAdditionalPrintCount.toString(), onValueChange = actions.updateLaunchAdditionalPrintCount, label = { Text("Default Additional Print") }, placeholder = { Text("0") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.fillMaxWidth())
-                    }
-                    EventSectionCard(title = "Default Voucher Prefill") {
-                        OutlinedTextField(value = state.voucherCode, onValueChange = actions.updateVoucherCode, label = { Text("Default Voucher Code") }, placeholder = { Text("Kosong jika tidak ada voucher") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                    }
-                    WelcomeScreenConfigCard(
-                        state = state,
-                        activeEventName = activeEvent?.eventName ?: launchState.eventNameInput.ifBlank { "Welcome Event" },
-                        actions = actions,
-                    )
-                    EventSectionCard(title = "Pilih Event Aktif") {
-                        Text(text = "Event aktif: ${activeEvent?.eventName ?: "Belum dipilih"}", style = MaterialTheme.typography.bodySmall)
-                    OutlinedButton(onClick = launchActions.refreshEvents, enabled = !launchState.loading && state.isStationReachable, modifier = Modifier.fillMaxWidth()) {
-                            Text("Sinkronkan Daftar Event")
+                    if (isShortcutMode) {
+                        EventSectionCard(title = "Default Session Prefills") {
+                            OutlinedTextField(value = state.customerWhatsapp, onValueChange = actions.updateCustomerWhatsapp, label = { Text("Nomor Customer / WA") }, placeholder = { Text("628123456789") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.fillMaxWidth())
+                            OutlinedTextField(value = state.launchAdditionalPrintCount.toString(), onValueChange = actions.updateLaunchAdditionalPrintCount, label = { Text("Default Additional Print") }, placeholder = { Text("0") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.fillMaxWidth())
+                            Spacer(Modifier.height(4.dp))
+                            OutlinedTextField(value = state.voucherCode, onValueChange = actions.updateVoucherCode, label = { Text("Default Voucher Code") }, placeholder = { Text("Kosong jika tidak ada voucher") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                         }
-                    }
-                    EventSectionCard(title = "Cloud Settings") {
-                        EventMetaChip(
-                            label = if (activeEvent?.cloudEnabled == true) "Cloud Enabled" else "Cloud Disabled",
-                            accent = if (activeEvent?.cloudEnabled == true) EventsUiTokens.success else EventsUiTokens.warning,
+                        WelcomeScreenConfigCard(
+                            state = state,
+                            activeEventName = activeEvent?.eventName ?: launchState.eventNameInput.ifBlank { "Welcome Event" },
+                            actions = actions,
+                        )
+                        PrintSettingsCard(
+                            state = state,
+                            actions = actions,
+                            marginLeftText = marginLeftText,
+                            marginRightText = marginRightText,
+                            marginTopText = marginTopText,
+                            marginBottomText = marginBottomText,
                         )
                     }
-                    EventSectionCard(title = "Print Settings") {
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                            Button(
-                                onClick = { actions.setPrintUsePhotoboothStation(true) },
-                                modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (state.printUsePhotoboothStation) EventsUiTokens.primary else Color.White,
-                                    contentColor = if (state.printUsePhotoboothStation) Color.White else EventsUiTokens.ink,
-                                ),
-                            ) {
-                                Text("Via Station")
+                    if (!isShortcutMode) {
+                        EventSectionCard(title = "Pilih Event Aktif") {
+                            Text(text = "Event aktif: ${activeEvent?.eventName ?: "Belum dipilih"}", style = MaterialTheme.typography.bodySmall)
+                            OutlinedButton(onClick = launchActions.refreshEvents, enabled = !launchState.loading && state.isStationReachable, modifier = Modifier.fillMaxWidth()) {
+                                Text("Sinkronkan Daftar Event")
                             }
-                            OutlinedButton(
-                                onClick = { actions.setPrintUsePhotoboothStation(false) },
-                                modifier = Modifier.weight(1f),
-                            ) {
-                                Text("Android Printer")
+                            if (launchState.events.isEmpty()) {
+                                Text(
+                                    text = if (state.isStationReachable) "Belum ada event di station. Buat event baru, lalu sinkronkan daftar event." else "Hubungkan station dulu untuk mengambil daftar event.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error,
+                                )
+                            } else {
+                                LazyColumn(modifier = Modifier.fillMaxWidth().height(320.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    items(launchState.events, key = { it.eventId }) { event ->
+                                        EventSelectionRow(
+                                            title = event.eventName,
+                                            subtitle = "${event.eventCode} | cloud=${if (event.cloudEnabled) "on" else "off"} | sync=${event.cloudSyncTiming ?: "-"}",
+                                            selected = event.eventId == launchState.selectedEventId,
+                                            onSelect = {
+                                                launchActions.onSelectEvent(event.eventId)
+                                                actions.setLaunchSelectedEventId(event.eventId)
+                                            },
+                                            onClickActive = actions.openSettingEvent,
+                                        )
+                                    }
+                                }
                             }
-                        }
-                    }
-                    EventSectionCard(title = "Template Access") {
-                        Text(text = if (state.launchAllowedTemplateIds.isEmpty()) "Semua template diizinkan." else "${state.launchAllowedTemplateIds.size} template diizinkan.", style = MaterialTheme.typography.bodySmall)
-                        OutlinedButton(onClick = actions.openSettingAllowedTemplates, modifier = Modifier.fillMaxWidth()) {
-                            Text("Buka Pengaturan Template Diizinkan")
                         }
                     }
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
                     OutlinedButton(onClick = actions.openDashboard, modifier = Modifier.weight(1f)) { Text("Back") }
-                    Button(onClick = actions.openLaunchEvent, enabled = state.isStationReachable, modifier = Modifier.weight(1f)) { Text("Go to Launch Event") }
+                    Button(onClick = actions.openLaunchEvent, enabled = state.isStationReachable, modifier = Modifier.weight(1f)) { Text("Launch Event") }
                 }
-                Text(
-                    text = if (state.isStationReachable) "Station tersambung. Setting siap dipakai." else "Connect Photobooth Station dulu untuk memakai event setting.",
-                    style = MaterialTheme.typography.bodySmall,
+            }
+        }
+    }
+}
+
+@Composable
+private fun PrintSettingsCard(
+    state: BoothUiState,
+    actions: BoothActions,
+    marginLeftText: MutableState<String>,
+    marginRightText: MutableState<String>,
+    marginTopText: MutableState<String>,
+    marginBottomText: MutableState<String>,
+) {
+    EventSectionCard(title = "Print Settings") {
+        Text(
+            text = "Pilih output print default untuk event aktif.",
+            style = MaterialTheme.typography.bodySmall,
+            color = EventsUiTokens.inkSoft,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+            Button(
+                onClick = { actions.setPrintUsePhotoboothStation(true) },
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (state.printUsePhotoboothStation) EventsUiTokens.primary else Color.White,
+                    contentColor = if (state.printUsePhotoboothStation) Color.White else EventsUiTokens.ink,
+                ),
+                border = if (state.printUsePhotoboothStation) null else BorderStroke(1.dp, EventsUiTokens.border),
+            ) {
+                Text("Via Station")
+            }
+            Button(
+                onClick = { actions.setPrintUsePhotoboothStation(false) },
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (!state.printUsePhotoboothStation) EventsUiTokens.primary else Color.White,
+                    contentColor = if (!state.printUsePhotoboothStation) Color.White else EventsUiTokens.ink,
+                ),
+                border = if (!state.printUsePhotoboothStation) null else BorderStroke(1.dp, EventsUiTokens.border),
+            ) {
+                Text("Android Printer")
+            }
+        }
+
+        if (!state.printUsePhotoboothStation) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "Printer Margins (mm):",
+                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                color = EventsUiTokens.inkSoft,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = marginLeftText.value,
+                    onValueChange = { newVal ->
+                        marginLeftText.value = newVal
+                        newVal.toFloatOrNull()?.let { actions.setPrinterMarginLeft(it) }
+                    },
+                    label = { Text("Left") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = marginRightText.value,
+                    onValueChange = { newVal ->
+                        marginRightText.value = newVal
+                        newVal.toFloatOrNull()?.let { actions.setPrinterMarginRight(it) }
+                    },
+                    label = { Text("Right") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
                 )
             }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = marginTopText.value,
+                    onValueChange = { newVal ->
+                        marginTopText.value = newVal
+                        newVal.toFloatOrNull()?.let { actions.setPrinterMarginTop(it) }
+                    },
+                    label = { Text("Top") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = marginBottomText.value,
+                    onValueChange = { newVal ->
+                        marginBottomText.value = newVal
+                        newVal.toFloatOrNull()?.let { actions.setPrinterMarginBottom(it) }
+                    },
+                    label = { Text("Bottom") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                )
+            }
+
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "Print Scale Mode:",
+                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                color = EventsUiTokens.inkSoft,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                Button(
+                    onClick = { actions.setPrinterScaleMode("fit") },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (state.printerScaleMode == "fit") EventsUiTokens.primary else Color.White,
+                        contentColor = if (state.printerScaleMode == "fit") Color.White else EventsUiTokens.ink,
+                    ),
+                    border = if (state.printerScaleMode == "fit") null else BorderStroke(1.dp, EventsUiTokens.border),
+                ) {
+                    Text("Fit to Page")
+                }
+                Button(
+                    onClick = { actions.setPrinterScaleMode("fill") },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (state.printerScaleMode == "fill") EventsUiTokens.primary else Color.White,
+                        contentColor = if (state.printerScaleMode == "fill") Color.White else EventsUiTokens.ink,
+                    ),
+                    border = if (state.printerScaleMode == "fill") null else BorderStroke(1.dp, EventsUiTokens.border),
+                ) {
+                    Text("Fill Page")
+                }
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+        OutlinedButton(onClick = actions.openSettingAllowedTemplates, modifier = Modifier.fillMaxWidth()) {
+            Text("Pengaturan Template Diizinkan")
         }
     }
 }
@@ -698,11 +817,20 @@ private fun EventSelectionRow(
     subtitle: String,
     selected: Boolean,
     onSelect: () -> Unit,
+    onClickActive: () -> Unit = {},
 ) {
     Card(
         colors = CardDefaults.cardColors(containerColor = Color.White),
         shape = RoundedCornerShape(22.dp),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable {
+                if (selected) {
+                    onClickActive()
+                } else {
+                    onSelect()
+                }
+            },
         elevation = CardDefaults.cardElevation(defaultElevation = if (selected) 10.dp else 4.dp),
     ) {
         Row(
@@ -735,7 +863,7 @@ private fun EventSelectionRow(
                     color = if (selected) EventsUiTokens.primary.copy(alpha = 0.14f) else EventsUiTokens.softSurface,
                 ) {
                     Text(
-                        if (selected) "Event aktif untuk station" else "Tap untuk jadikan event aktif",
+                        if (selected) "Event aktif • Tap untuk edit setting" else "Tap untuk jadikan event aktif",
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                         style = MaterialTheme.typography.labelSmall,
                         color = if (selected) EventsUiTokens.primary else EventsUiTokens.inkSoft,
@@ -744,8 +872,14 @@ private fun EventSelectionRow(
             }
             FilterChip(
                 selected = selected,
-                onClick = onSelect,
-                label = { Text(if (selected) "Aktif" else "Pilih") },
+                onClick = {
+                    if (selected) {
+                        onClickActive()
+                    } else {
+                        onSelect()
+                    }
+                },
+                label = { Text(if (selected) "Setting" else "Pilih") },
             )
         }
     }

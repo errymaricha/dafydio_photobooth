@@ -69,6 +69,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.automirrored.filled.Send
 import com.errymaricha.dafydiobooth.ui.theme.DafydioBoothTheme
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.qrcode.QRCodeWriter
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -1109,70 +1111,33 @@ private fun QrCodeCanvas(
     data: String,
     modifier: Modifier = Modifier
 ) {
+    val bitMatrix = remember(data) {
+        try {
+            QRCodeWriter().encode(data, BarcodeFormat.QR_CODE, 512, 512)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     Canvas(modifier = modifier) {
         val sizePx = size.minDimension
-        val numModules = 21 // Version 1 QR code modules (21x21)
-        val moduleSize = sizePx / numModules
-
-        // 1. Draw solid white background
-        drawRect(color = Color.White)
-
-        // Helper function to draw QR standard finder patterns
-        fun drawFinderPattern(x: Int, y: Int) {
-            // Outer black square
-            drawRect(
-                color = Color.Black,
-                topLeft = androidx.compose.ui.geometry.Offset(x * moduleSize, y * moduleSize),
-                size = androidx.compose.ui.geometry.Size(7 * moduleSize, 7 * moduleSize)
-            )
-            // Inner white square
-            drawRect(
-                color = Color.White,
-                topLeft = androidx.compose.ui.geometry.Offset((x + 1) * moduleSize, (y + 1) * moduleSize),
-                size = androidx.compose.ui.geometry.Size(5 * moduleSize, 5 * moduleSize)
-            )
-            // Center solid black square
-            drawRect(
-                color = Color.Black,
-                topLeft = androidx.compose.ui.geometry.Offset((x + 2) * moduleSize, (y + 2) * moduleSize),
-                size = androidx.compose.ui.geometry.Size(3 * moduleSize, 3 * moduleSize)
-            )
-        }
-
-        // Draw 3 standard corner alignment finder blocks
-        drawFinderPattern(0, 0)
-        drawFinderPattern(14, 0)
-        drawFinderPattern(0, 14)
-
-        // Draw alignment sub-pattern at bottom right (14, 14)
-        drawRect(
-            color = Color.Black,
-            topLeft = androidx.compose.ui.geometry.Offset(14 * moduleSize, 14 * moduleSize),
-            size = androidx.compose.ui.geometry.Size(3 * moduleSize, 3 * moduleSize)
-        )
-        drawRect(
-            color = Color.White,
-            topLeft = androidx.compose.ui.geometry.Offset(15 * moduleSize, 15 * moduleSize),
-            size = androidx.compose.ui.geometry.Size(1 * moduleSize, 1 * moduleSize)
-        )
-
-        // Draw timing lines and pseudo-random code bytes based on data hash
-        val random = java.util.Random(data.hashCode().toLong())
-        for (r in 0 until numModules) {
-            for (c in 0 until numModules) {
-                // Skip positions taken by finder patterns
-                val isFinder = (r < 8 && c < 8) || (r < 8 && c > 12) || (r > 12 && c < 8)
-                val isAlignment = (r in 14..16 && c in 14..16)
-                if (isFinder || isAlignment) continue
-
-                if (random.nextBoolean()) {
-                    drawRect(
-                        color = Color.Black,
-                        topLeft = androidx.compose.ui.geometry.Offset(c * moduleSize, r * moduleSize),
-                        size = androidx.compose.ui.geometry.Size(moduleSize, moduleSize)
-                    )
+        if (bitMatrix != null) {
+            val numModules = bitMatrix.width
+            val moduleSize = sizePx / numModules
+            drawRect(color = Color.White)
+            for (r in 0 until numModules) {
+                for (c in 0 until numModules) {
+                    if (bitMatrix.get(c, r)) {
+                        drawRect(
+                            color = Color.Black,
+                            topLeft = androidx.compose.ui.geometry.Offset(c * moduleSize, r * moduleSize),
+                            size = androidx.compose.ui.geometry.Size(moduleSize, moduleSize)
+                        )
+                    }
                 }
             }
+        } else {
+            drawRect(color = Color.LightGray)
         }
     }
 }

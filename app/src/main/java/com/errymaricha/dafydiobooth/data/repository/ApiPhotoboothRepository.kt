@@ -1,6 +1,8 @@
 package com.errymaricha.dafydiobooth.data.repository
 
 import android.util.Log
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import com.errymaricha.dafydiobooth.data.api.ApiErrorBody
 import com.errymaricha.dafydiobooth.data.api.ConfirmPaymentRequest
 import com.errymaricha.dafydiobooth.data.api.CreateEditJobRequest
@@ -35,6 +37,8 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.RequestBody.Companion.asRequestBody
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import retrofit2.HttpException
 
 class ApiPhotoboothRepository(
@@ -164,25 +168,78 @@ class ApiPhotoboothRepository(
         slotIndex: Int?,
         photoFile: File,
     ): BoothResult<UploadCaptureResult> = safeApiCall {
-        val response = api.uploadCapture(
-            bearerToken = "Bearer ${authToken.trim()}",
-            deviceId = deviceId.trim(),
-            sessionId = sessionId,
-            photo = MultipartBody.Part.createFormData(
-                name = "photo",
-                filename = photoFile.name,
-                body = photoFile.asRequestBody("image/jpeg".toMediaType()),
-            ),
-            captureIndex = captureIndex.toString().toRequestBody("text/plain".toMediaType()),
-            slotIndex = slotIndex?.toString()?.toRequestBody("text/plain".toMediaType()),
-        )
-        val payload = response.string()
-        val sessionPhotoId = parseSessionPhotoId(payload)
-        if (sessionPhotoId.isNullOrBlank()) {
-            throw IllegalStateException("Upload berhasil tapi session_photo_id tidak ditemukan. payload=${payload.take(500)}")
+        val compressedFile = compressImageFile(photoFile)
+        try {
+            val response = api.uploadCapture(
+                bearerToken = "Bearer ${authToken.trim()}",
+                deviceId = deviceId.trim(),
+                sessionId = sessionId,
+                photo = MultipartBody.Part.createFormData(
+                    name = "photo",
+                    filename = compressedFile.name,
+                    body = compressedFile.asRequestBody("image/jpeg".toMediaType()),
+                ),
+                captureIndex = captureIndex.toString().toRequestBody("text/plain".toMediaType()),
+                slotIndex = slotIndex?.toString()?.toRequestBody("text/plain".toMediaType()),
+            )
+            val payload = response.string()
+            val sessionPhotoId = parseSessionPhotoId(payload)
+            if (sessionPhotoId.isNullOrBlank()) {
+                throw IllegalStateException("Upload berhasil tapi session_photo_id tidak ditemukan. payload=${payload.take(500)}")
+            }
+            UploadCaptureResult(sessionPhotoId = sessionPhotoId)
+        } finally {
+            if (compressedFile != photoFile && compressedFile.exists()) {
+                compressedFile.delete()
+            }
         }
-        UploadCaptureResult(sessionPhotoId = sessionPhotoId)
     }
+
+    private fun compressImageFile(originalFile: File): File {
+        return try {
+            val options = BitmapFactory.Options().apply {
+                inJustDecodeBounds = true
+            }
+            BitmapFactory.decodeFile(originalFile.absolutePath, options)
+            
+            val maxDimension = 2048
+            var inSampleSize = 1
+            if (options.outWidth > maxDimension || options.outHeight > maxDimension) {
+                val halfWidth = options.outWidth / 2
+                val halfHeight = options.outHeight / 2
+                while (halfWidth / inSampleSize >= maxDimension && halfHeight / inSampleSize >= maxDimension) {
+                    inSampleSize *= 2
+                }
+            }
+            
+            val decodeOptions = BitmapFactory.Options().apply {
+                inSampleSize = inSampleSize
+            }
+            val bitmap = BitmapFactory.decodeFile(originalFile.absolutePath, decodeOptions) ?: return originalFile
+            
+            val scaledBitmap = if (bitmap.width > maxDimension || bitmap.height > maxDimension) {
+                val ratio = bitmap.width.toFloat() / bitmap.height.toFloat()
+                val newWidth = if (bitmap.width > bitmap.height) maxDimension else (maxDimension * ratio).toInt()
+                val newHeight = if (bitmap.height > bitmap.width) maxDimension else (maxDimension / ratio).toInt()
+                Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true).also {
+                    if (it != bitmap) bitmap.recycle()
+                }
+            } else {
+                bitmap
+            }
+            
+            val tempFile = File.createTempFile("upload_${System.currentTimeMillis()}", ".jpg", originalFile.parentFile)
+            tempFile.outputStream().use { fos ->
+                scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 85, fos)
+            }
+            scaledBitmap.recycle()
+            tempFile
+        } catch (t: Throwable) {
+            t.printStackTrace()
+            originalFile
+        }
+    }
+
 
     override suspend fun fetchTemplates(authToken: String): BoothResult<List<BoothTemplate>> = safeApiCall {
         val payload = api.listTemplates(
@@ -296,8 +353,8 @@ class ApiPhotoboothRepository(
         Unit
     }
 
-    private suspend fun <T> safeApiCall(block: suspend () -> T): BoothResult<T> {
-        return try {
+    private suspend fun <T> safeApiCall(block: suspend () -> T): BoothResult<T> = withContext(Dispatchers.IO) {
+        try {
             BoothResult.Success(block())
         } catch (error: HttpException) {
             BoothResult.Failure(error.toBoothError())

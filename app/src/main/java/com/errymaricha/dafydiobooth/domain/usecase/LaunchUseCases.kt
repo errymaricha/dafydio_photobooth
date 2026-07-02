@@ -114,10 +114,10 @@ class UpdateLaunchEventUseCase(
         eventId: String,
         eventCode: String,
         eventName: String,
-        cloudEnabled: Boolean = true,
-        cloudUploadMode: String = "originals_and_framed",
-        cloudSyncTiming: String = "after_render",
-        cloudTemplateMarketplaceEnabled: Boolean = true,
+        cloudEnabled: Boolean? = null,
+        cloudUploadMode: String? = null,
+        cloudSyncTiming: String? = null,
+        cloudTemplateMarketplaceEnabled: Boolean? = null,
     ): LaunchEvent {
         require(token.isNotBlank()) { "Token station belum tersedia" }
         require(eventId.isNotBlank()) { "Event ID wajib diisi" }

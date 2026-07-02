@@ -3,6 +3,7 @@ package com.errymaricha.dafydiobooth.data.local
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -51,6 +52,11 @@ data class DeviceConfig(
     val printUsePhotoboothStation: Boolean = false,
     val welcomeBgUri: String = "",
     val welcomeBgIsVideo: Boolean = false,
+    val printerMarginTop: Float = 0.0f,
+    val printerMarginBottom: Float = 0.0f,
+    val printerMarginLeft: Float = 0.0f,
+    val printerMarginRight: Float = 0.0f,
+    val printerScaleMode: String = "fit",
 )
 
 class DeviceConfigStore(private val context: Context) {
@@ -87,23 +93,40 @@ class DeviceConfigStore(private val context: Context) {
     private val templatesJsonKey = stringPreferencesKey("templates_json")
     private val welcomeBgUriKey = stringPreferencesKey("welcome_bg_uri")
     private val welcomeBgIsVideoKey = booleanPreferencesKey("welcome_bg_is_video")
+    private val printerMarginTopKey = floatPreferencesKey("printer_margin_top")
+    private val printerMarginBottomKey = floatPreferencesKey("printer_margin_bottom")
+    private val printerMarginLeftKey = floatPreferencesKey("printer_margin_left")
+    private val printerMarginRightKey = floatPreferencesKey("printer_margin_right")
+    private val printerScaleModeKey = stringPreferencesKey("printer_scale_mode")
 
     val config: Flow<DeviceConfig> = context.deviceConfigDataStore.data.map { preferences ->
         val eventId = preferences[launchSelectedEventIdKey].orEmpty()
         val welcomeBgUriKeyForEvent = stringPreferencesKey("welcome_bg_uri_$eventId")
         val welcomeBgIsVideoKeyForEvent = booleanPreferencesKey("welcome_bg_is_video_$eventId")
+
+        val allowedTemplatesKeyForEvent = stringPreferencesKey("launch_allowed_template_ids_$eventId")
+        val whatsappKeyForEvent = stringPreferencesKey("customer_whatsapp_$eventId")
+        val printCountKeyForEvent = intPreferencesKey("launch_additional_print_count_$eventId")
+        val voucherKeyForEvent = stringPreferencesKey("voucher_code_$eventId")
+        val useStationKeyForEvent = booleanPreferencesKey("print_use_photobooth_station_$eventId")
+        val marginTopKeyForEvent = floatPreferencesKey("printer_margin_top_$eventId")
+        val marginBottomKeyForEvent = floatPreferencesKey("printer_margin_bottom_$eventId")
+        val marginLeftKeyForEvent = floatPreferencesKey("printer_margin_left_$eventId")
+        val marginRightKeyForEvent = floatPreferencesKey("printer_margin_right_$eventId")
+        val scaleModeKeyForEvent = stringPreferencesKey("printer_scale_mode_$eventId")
+
         DeviceConfig(
             deviceId = preferences[deviceIdKey].orEmpty(),
             token = preferences[tokenKey].orEmpty(),
             authToken = preferences[authTokenKey].orEmpty(),
             stationIp = preferences[stationIpKey] ?: BuildConfig.BASE_URL,
             customerId = preferences[customerIdKey].orEmpty(),
-            customerWhatsapp = preferences[customerWhatsappKey].orEmpty(),
+            customerWhatsapp = if (eventId.isNotBlank()) preferences[whatsappKeyForEvent] ?: preferences[customerWhatsappKey].orEmpty() else preferences[customerWhatsappKey].orEmpty(),
             launchEventName = preferences[launchEventNameKey].orEmpty(),
             launchSelectedEventId = preferences[launchSelectedEventIdKey].orEmpty(),
-            launchAllowedTemplateIds = parseTemplateIds(preferences[launchAllowedTemplateIdsKey].orEmpty()),
-            launchAdditionalPrintCount = preferences[launchAdditionalPrintCountKey] ?: 0,
-            voucherCode = preferences[voucherCodeKey].orEmpty(),
+            launchAllowedTemplateIds = if (eventId.isNotBlank()) parseTemplateIds(preferences[allowedTemplatesKeyForEvent] ?: preferences[launchAllowedTemplateIdsKey].orEmpty()) else parseTemplateIds(preferences[launchAllowedTemplateIdsKey].orEmpty()),
+            launchAdditionalPrintCount = if (eventId.isNotBlank()) preferences[printCountKeyForEvent] ?: preferences[launchAdditionalPrintCountKey] ?: 0 else preferences[launchAdditionalPrintCountKey] ?: 0,
+            voucherCode = if (eventId.isNotBlank()) preferences[voucherKeyForEvent] ?: preferences[voucherCodeKey].orEmpty() else preferences[voucherCodeKey].orEmpty(),
             voucherType = preferences[voucherTypeKey] ?: "regular",
             sessionType = preferences[sessionTypeKey] ?: "photo",
             paymentMethod = preferences[paymentMethodKey] ?: "manual",
@@ -121,9 +144,14 @@ class DeviceConfigStore(private val context: Context) {
             countdownAudio = preferences[countdownAudioKey] ?: true,
             shutterSound = preferences[shutterSoundKey] ?: true,
             defaultPrinting = preferences[defaultPrintingKey] ?: true,
-            printUsePhotoboothStation = preferences[printUsePhotoboothStationKey] ?: false,
+            printUsePhotoboothStation = if (eventId.isNotBlank()) preferences[useStationKeyForEvent] ?: preferences[printUsePhotoboothStationKey] ?: false else preferences[printUsePhotoboothStationKey] ?: false,
             welcomeBgUri = if (eventId.isNotBlank()) preferences[welcomeBgUriKeyForEvent].orEmpty() else preferences[welcomeBgUriKey].orEmpty(),
             welcomeBgIsVideo = if (eventId.isNotBlank()) (preferences[welcomeBgIsVideoKeyForEvent] ?: false) else (preferences[welcomeBgIsVideoKey] ?: false),
+            printerMarginTop = if (eventId.isNotBlank()) preferences[marginTopKeyForEvent] ?: preferences[printerMarginTopKey] ?: 0.0f else preferences[printerMarginTopKey] ?: 0.0f,
+            printerMarginBottom = if (eventId.isNotBlank()) preferences[marginBottomKeyForEvent] ?: preferences[printerMarginBottomKey] ?: 0.0f else preferences[printerMarginBottomKey] ?: 0.0f,
+            printerMarginLeft = if (eventId.isNotBlank()) preferences[marginLeftKeyForEvent] ?: preferences[printerMarginLeftKey] ?: 0.0f else preferences[printerMarginLeftKey] ?: 0.0f,
+            printerMarginRight = if (eventId.isNotBlank()) preferences[marginRightKeyForEvent] ?: preferences[printerMarginRightKey] ?: 0.0f else preferences[printerMarginRightKey] ?: 0.0f,
+            printerScaleMode = if (eventId.isNotBlank()) preferences[scaleModeKeyForEvent] ?: preferences[printerScaleModeKey] ?: "fit" else preferences[printerScaleModeKey] ?: "fit",
         )
     }
 
@@ -177,12 +205,8 @@ class DeviceConfigStore(private val context: Context) {
             preferences[authTokenKey] = config.authToken
             preferences[stationIpKey] = config.stationIp
             preferences[customerIdKey] = config.customerId
-            preferences[customerWhatsappKey] = config.customerWhatsapp
             preferences[launchEventNameKey] = config.launchEventName
             preferences[launchSelectedEventIdKey] = config.launchSelectedEventId
-            preferences[launchAllowedTemplateIdsKey] = encodeTemplateIds(config.launchAllowedTemplateIds)
-            preferences[launchAdditionalPrintCountKey] = config.launchAdditionalPrintCount.coerceAtLeast(0)
-            preferences[voucherCodeKey] = config.voucherCode
             preferences[voucherTypeKey] = config.voucherType
             preferences[sessionTypeKey] = config.sessionType
             preferences[paymentMethodKey] = config.paymentMethod
@@ -200,17 +224,39 @@ class DeviceConfigStore(private val context: Context) {
             preferences[countdownAudioKey] = config.countdownAudio
             preferences[shutterSoundKey] = config.shutterSound
             preferences[defaultPrintingKey] = config.defaultPrinting
-            preferences[printUsePhotoboothStationKey] = config.printUsePhotoboothStation
-            
+
             val eventId = config.launchSelectedEventId
             if (eventId.isNotBlank()) {
+                preferences[stringPreferencesKey("customer_whatsapp_$eventId")] = config.customerWhatsapp
+                preferences[intPreferencesKey("launch_additional_print_count_$eventId")] = config.launchAdditionalPrintCount.coerceAtLeast(0)
+                preferences[stringPreferencesKey("voucher_code_$eventId")] = config.voucherCode
+                preferences[stringPreferencesKey("launch_allowed_template_ids_$eventId")] = encodeTemplateIds(config.launchAllowedTemplateIds)
+                preferences[booleanPreferencesKey("print_use_photobooth_station_$eventId")] = config.printUsePhotoboothStation
+                preferences[floatPreferencesKey("printer_margin_top_$eventId")] = config.printerMarginTop
+                preferences[floatPreferencesKey("printer_margin_bottom_$eventId")] = config.printerMarginBottom
+                preferences[floatPreferencesKey("printer_margin_left_$eventId")] = config.printerMarginLeft
+                preferences[floatPreferencesKey("printer_margin_right_$eventId")] = config.printerMarginRight
+                preferences[stringPreferencesKey("printer_scale_mode_$eventId")] = config.printerScaleMode
+
                 val welcomeBgUriKeyForEvent = stringPreferencesKey("welcome_bg_uri_$eventId")
                 val welcomeBgIsVideoKeyForEvent = booleanPreferencesKey("welcome_bg_is_video_$eventId")
                 preferences[welcomeBgUriKeyForEvent] = config.welcomeBgUri
                 preferences[welcomeBgIsVideoKeyForEvent] = config.welcomeBgIsVideo
             }
+
+            // Fallback global configurations
+            preferences[customerWhatsappKey] = config.customerWhatsapp
+            preferences[launchAllowedTemplateIdsKey] = encodeTemplateIds(config.launchAllowedTemplateIds)
+            preferences[launchAdditionalPrintCountKey] = config.launchAdditionalPrintCount.coerceAtLeast(0)
+            preferences[voucherCodeKey] = config.voucherCode
+            preferences[printUsePhotoboothStationKey] = config.printUsePhotoboothStation
             preferences[welcomeBgUriKey] = config.welcomeBgUri
             preferences[welcomeBgIsVideoKey] = config.welcomeBgIsVideo
+            preferences[printerMarginTopKey] = config.printerMarginTop
+            preferences[printerMarginBottomKey] = config.printerMarginBottom
+            preferences[printerMarginLeftKey] = config.printerMarginLeft
+            preferences[printerMarginRightKey] = config.printerMarginRight
+            preferences[printerScaleModeKey] = config.printerScaleMode
         }
     }
 
@@ -220,6 +266,16 @@ class DeviceConfigStore(private val context: Context) {
                 ListSerializer(StoredTemplate.serializer()),
                 templates,
             )
+        }
+    }
+
+    suspend fun saveWelcomeBgForEvent(eventId: String, bgUri: String, isVideo: Boolean) {
+        if (eventId.isBlank()) return
+        context.deviceConfigDataStore.edit { preferences ->
+            val welcomeBgUriKeyForEvent = stringPreferencesKey("welcome_bg_uri_$eventId")
+            val welcomeBgIsVideoKeyForEvent = booleanPreferencesKey("welcome_bg_is_video_$eventId")
+            preferences[welcomeBgUriKeyForEvent] = bgUri
+            preferences[welcomeBgIsVideoKeyForEvent] = isVideo
         }
     }
 }

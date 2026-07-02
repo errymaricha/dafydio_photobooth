@@ -114,7 +114,11 @@ class TemplateRenderedOutputComposer(private val context: Context) {
 
         state.selectedTemplateSlots.sortedBy { it.slotIndex }.forEach { slot ->
             val photoPath = state.capturedPhotosBySlot[slot.sourceSlotIndex] ?: return@forEach
-            val photo = decodeBitmap(photoPath) ?: return@forEach
+            val photo = decodeBitmap(
+                source = photoPath,
+                reqWidth = slot.width,
+                reqHeight = slot.height,
+            ) ?: return@forEach
             photo.use {
                 drawPhotoInSlot(canvas, paint, it, slot)
             }
@@ -146,9 +150,9 @@ class TemplateRenderedOutputComposer(private val context: Context) {
         }
 
         val targetDir = File(context.cacheDir, "rendered_output").apply { mkdirs() }
-        val targetFile = File(targetDir, "session_render_${System.currentTimeMillis()}.png")
+        val targetFile = File(targetDir, "session_render_${System.currentTimeMillis()}.jpg")
         FileOutputStream(targetFile).use { output ->
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 90, output)
             output.flush()
         }
         bitmap.recycle()

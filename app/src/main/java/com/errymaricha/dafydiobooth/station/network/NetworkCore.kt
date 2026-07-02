@@ -5,10 +5,15 @@ import kotlinx.serialization.json.Json
 import retrofit2.HttpException
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
+import okhttp3.ConnectionPool
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
+import okhttp3.Protocol
 import java.io.IOException
 import java.net.URI
+import java.util.concurrent.TimeUnit
+import com.errymaricha.dafydiobooth.data.api.ConnectionCloseInterceptor
+import com.errymaricha.dafydiobooth.data.api.NetworkRetryInterceptor
 
 sealed class AppError {
     data object Unauthorized : AppError()
@@ -54,6 +59,9 @@ object DeviceApiFactory {
 
     fun create(baseUrlProvider: () -> String): DeviceApiService {
         val client = OkHttpClient.Builder()
+            .protocols(listOf(Protocol.HTTP_1_1))
+            .connectionPool(ConnectionPool(0, 1, TimeUnit.MILLISECONDS))
+            .retryOnConnectionFailure(true)
             .addInterceptor { chain ->
                 val currentBase = runCatching { URI(baseUrlProvider()) }.getOrNull()
                 val request = chain.request()
@@ -79,6 +87,8 @@ object DeviceApiFactory {
                     )
                 }
             }
+            .addInterceptor(ConnectionCloseInterceptor())
+            .addInterceptor(NetworkRetryInterceptor())
             .build()
         return Retrofit.Builder()
             .baseUrl("http://127.0.0.1/")

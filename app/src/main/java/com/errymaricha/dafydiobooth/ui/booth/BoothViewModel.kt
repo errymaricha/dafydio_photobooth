@@ -149,6 +149,11 @@ class BoothViewModel(
                         printUsePhotoboothStation = config.printUsePhotoboothStation,
                         welcomeBgUri = bgUri,
                         welcomeBgIsVideo = bgIsVideo,
+                        printerMarginTop = config.printerMarginTop,
+                        printerMarginBottom = config.printerMarginBottom,
+                        printerMarginLeft = config.printerMarginLeft,
+                        printerMarginRight = config.printerMarginRight,
+                        printerScaleMode = config.printerScaleMode,
                     )
                 }
             }
@@ -696,9 +701,19 @@ class BoothViewModel(
         }
     }
 
-    fun capturePhoto(filePath: String) = _state.update {
+    fun capturePhoto(filePath: String) {
         val name = filePath.substringAfterLast('/').substringAfterLast('\\')
-        it.copy(capturedPhotoName = name, capturedPhotoPath = filePath, step = BoothStep.CapturePreview, errorMessage = null)
+        _state.update {
+            it.copy(
+                capturedPhotoName = name,
+                capturedPhotoPath = filePath,
+                step = if (it.step == BoothStep.LaunchEvent) BoothStep.LaunchEvent else BoothStep.CapturePreview,
+                errorMessage = null
+            )
+        }
+        if (state.value.step == BoothStep.LaunchEvent) {
+            acceptCapturePreview()
+        }
     }
 
     fun retakePhoto() = _state.update { it.copy(step = BoothStep.Camera, capturedPhotoName = null, capturedPhotoPath = null) }
@@ -722,89 +737,92 @@ class BoothViewModel(
         }
     }
 
-    fun acceptCapturePreview() = launchRequest {
-        val current = state.value
-        val requiredCaptures = current.templateSlotCount.coerceAtLeast(1)
-        val capturePath = current.capturedPhotoPath
-        val session = sessionStateManager.snapshot()
-        if (capturePath.isNullOrBlank()) {
-            proceedAfterCaptureAccepted(
-                current = current,
-                requiredCaptures = requiredCaptures,
-                successMessage = "Foto #${current.nextCaptureIndex} diterima.",
-                capturePath = capturePath,
-            )
-            return@launchRequest
-        }
-        if (current.localOnlySession || !current.isStationConnected || session.sessionId.isNullOrBlank()) {
-            proceedAfterCaptureAccepted(
-                current = current,
-                requiredCaptures = requiredCaptures,
-                successMessage = "Foto #${current.nextCaptureIndex} tersimpan lokal.",
-                capturePath = capturePath,
-            )
-            return@launchRequest
-        }
-
-        _state.update {
-            it.copy(
-                eventStatusMessage = "Mengirim foto #${it.nextCaptureIndex} ke Photobooth Station...",
-                errorMessage = null,
-            )
-        }
-        when (
-            val result = useCases.uploadCapture(
-                authToken = session.authToken,
-                deviceId = session.deviceId,
-                sessionId = session.sessionId,
-                captureIndex = current.nextCaptureIndex,
-                slotIndex = currentCaptureSlotIndex(current),
-                photoFile = File(capturePath),
-            )
-        ) {
-            is BoothResult.Success -> {
-                val uploadedId = result.value.sessionPhotoId
-                val captureSlot = currentCaptureSlotIndex(current)
-                logSlotDebug(
-                    "uploadCapture captureIndex=${current.nextCaptureIndex} sourceSlot=$captureSlot uploadedSessionPhotoId=$uploadedId",
-                )
-                _state.update { st ->
-                    st.copy(
-                        uploadedSessionPhotosBySlot = if (uploadedId.isNullOrBlank()) {
-                            st.uploadedSessionPhotosBySlot
-                        } else {
-                            st.uploadedSessionPhotosBySlot + (captureSlot to uploadedId)
-                        },
-                    )
-                }
+    fun acceptCapturePreview() {
+        if (state.value.isLoading) return
+        launchRequest {
+            val current = state.value
+            val requiredCaptures = current.templateSlotCount.coerceAtLeast(1)
+            val capturePath = current.capturedPhotoPath
+            val session = sessionStateManager.snapshot()
+            if (capturePath.isNullOrBlank()) {
                 proceedAfterCaptureAccepted(
-                current = current,
-                requiredCaptures = requiredCaptures,
-                successMessage = "Foto #${current.nextCaptureIndex} berhasil dikirim.",
-                capturePath = capturePath,
-            )
+                    current = current,
+                    requiredCaptures = requiredCaptures,
+                    successMessage = "Foto #${current.nextCaptureIndex} diterima.",
+                    capturePath = capturePath,
+                )
+                return@launchRequest
             }
-            is BoothResult.Failure -> {
-                val message = when (result.error) {
-                    is BoothError.Unauthorized -> "Upload capture gagal (401): ${result.error.message}"
-                    is BoothError.Forbidden -> "Upload capture gagal (403): ${result.error.message}"
-                    is BoothError.Validation -> {
-                        val detail = result.error.message
-                        if (detail.contains("(409)")) {
-                            "Upload capture gagal (409): $detail"
-                        } else {
-                            "Upload capture gagal (422): $detail"
-                        }
-                    }
-                    is BoothError.Network -> "Upload capture gagal (network): ${result.error.message}"
-                    is BoothError.Unknown -> "Upload capture gagal: ${result.error.message}"
-                }
-                _state.update {
-                    it.copy(
-                        step = BoothStep.CapturePreview,
-                        eventStatusMessage = "Foto belum terkirim ke Photobooth Station.",
-                        errorMessage = message,
+            if (current.localOnlySession || !current.isStationConnected || session.sessionId.isNullOrBlank()) {
+                proceedAfterCaptureAccepted(
+                    current = current,
+                    requiredCaptures = requiredCaptures,
+                    successMessage = "Foto #${current.nextCaptureIndex} tersimpan lokal.",
+                    capturePath = capturePath,
+                )
+                return@launchRequest
+            }
+
+            _state.update {
+                it.copy(
+                    eventStatusMessage = "Mengirim foto #${it.nextCaptureIndex} ke Photobooth Station...",
+                    errorMessage = null,
+                )
+            }
+            when (
+                val result = useCases.uploadCapture(
+                    authToken = session.authToken,
+                    deviceId = session.deviceId,
+                    sessionId = session.sessionId,
+                    captureIndex = current.nextCaptureIndex,
+                    slotIndex = currentCaptureSlotIndex(current),
+                    photoFile = File(capturePath),
+                )
+            ) {
+                is BoothResult.Success -> {
+                    val uploadedId = result.value.sessionPhotoId
+                    val captureSlot = currentCaptureSlotIndex(current)
+                    logSlotDebug(
+                        "uploadCapture captureIndex=${current.nextCaptureIndex} sourceSlot=$captureSlot uploadedSessionPhotoId=$uploadedId",
                     )
+                    _state.update { st ->
+                        st.copy(
+                            uploadedSessionPhotosBySlot = if (uploadedId.isNullOrBlank()) {
+                                st.uploadedSessionPhotosBySlot
+                            } else {
+                                st.uploadedSessionPhotosBySlot + (captureSlot to uploadedId)
+                            },
+                        )
+                    }
+                    proceedAfterCaptureAccepted(
+                        current = current,
+                        requiredCaptures = requiredCaptures,
+                        successMessage = "Foto #${current.nextCaptureIndex} berhasil dikirim.",
+                        capturePath = capturePath,
+                    )
+                }
+                is BoothResult.Failure -> {
+                    val message = when (result.error) {
+                        is BoothError.Unauthorized -> "Upload capture gagal (401): ${result.error.message}"
+                        is BoothError.Forbidden -> "Upload capture gagal (403): ${result.error.message}"
+                        is BoothError.Validation -> {
+                            val detail = result.error.message
+                            if (detail.contains("(409)")) {
+                                "Upload capture gagal (409): $detail"
+                            } else {
+                                "Upload capture gagal (422): $detail"
+                            }
+                        }
+                        is BoothError.Network -> "Upload capture gagal (network): ${result.error.message}"
+                        is BoothError.Unknown -> "Upload capture gagal: ${result.error.message}"
+                    }
+                    _state.update {
+                        it.copy(
+                            step = if (it.step == BoothStep.LaunchEvent) BoothStep.LaunchEvent else BoothStep.CapturePreview,
+                            eventStatusMessage = "Foto belum terkirim ke Photobooth Station.",
+                            errorMessage = message,
+                        )
+                    }
                 }
             }
         }
@@ -1481,6 +1499,12 @@ class BoothViewModel(
     fun setWelcomeBgIsVideo(value: Boolean) = updateAndPersistConfig {
         it.copy(welcomeBgIsVideo = value)
     }
+
+    fun setPrinterMarginTop(value: Float) = updateAndPersistConfig { it.copy(printerMarginTop = value) }
+    fun setPrinterMarginBottom(value: Float) = updateAndPersistConfig { it.copy(printerMarginBottom = value) }
+    fun setPrinterMarginLeft(value: Float) = updateAndPersistConfig { it.copy(printerMarginLeft = value) }
+    fun setPrinterMarginRight(value: Float) = updateAndPersistConfig { it.copy(printerMarginRight = value) }
+    fun setPrinterScaleMode(value: String) = updateAndPersistConfig { it.copy(printerScaleMode = value) }
 
     fun loginDevice() = launchRequest {
         val current = state.value
@@ -2184,7 +2208,7 @@ class BoothViewModel(
                     capturedPhotoName = null,
                     capturedPhotoPath = null,
                     capturedPhotosBySlot = updatedPhotos,
-                    step = BoothStep.TemplatePreview,
+                    step = if (it.step == BoothStep.LaunchEvent) BoothStep.LaunchEvent else BoothStep.TemplatePreview,
                     eventStatusMessage = successMessage,
                     errorMessage = null,
                 )
@@ -2199,7 +2223,7 @@ class BoothViewModel(
                     capturedPhotoName = null,
                     capturedPhotoPath = null,
                     capturedPhotosBySlot = updatedPhotos,
-                    step = BoothStep.Camera,
+                    step = if (it.step == BoothStep.LaunchEvent) BoothStep.LaunchEvent else BoothStep.Camera,
                     eventStatusMessage = "$successMessage Lanjut foto #${current.nextCaptureIndex + 1}/$requiredCaptures.",
                     errorMessage = null,
                 )
@@ -2211,7 +2235,7 @@ class BoothViewModel(
                 capturedPhotoName = null,
                 capturedPhotoPath = null,
                 capturedPhotosBySlot = updatedPhotos,
-                step = BoothStep.TemplatePreview,
+                step = if (it.step == BoothStep.LaunchEvent) BoothStep.LaunchEvent else BoothStep.TemplatePreview,
                 eventStatusMessage = successMessage,
                 errorMessage = null,
             )
@@ -2551,6 +2575,11 @@ private fun BoothUiState.toDeviceConfig() = DeviceConfig(
     printUsePhotoboothStation = printUsePhotoboothStation,
     welcomeBgUri = welcomeBgUri,
     welcomeBgIsVideo = welcomeBgIsVideo,
+    printerMarginTop = printerMarginTop,
+    printerMarginBottom = printerMarginBottom,
+    printerMarginLeft = printerMarginLeft,
+    printerMarginRight = printerMarginRight,
+    printerScaleMode = printerScaleMode,
 )
 
 private fun LaunchSession.toBoothSession() = BoothSession(

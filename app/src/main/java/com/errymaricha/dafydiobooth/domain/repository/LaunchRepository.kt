@@ -30,10 +30,10 @@ interface LaunchRepository {
         eventId: String,
         eventCode: String,
         eventName: String,
-        cloudEnabled: Boolean,
-        cloudUploadMode: String,
-        cloudSyncTiming: String,
-        cloudTemplateMarketplaceEnabled: Boolean,
+        cloudEnabled: Boolean? = null,
+        cloudUploadMode: String? = null,
+        cloudSyncTiming: String? = null,
+        cloudTemplateMarketplaceEnabled: Boolean? = null,
     ): LaunchEvent
 
     suspend fun openSessionManual(

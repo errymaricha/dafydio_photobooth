@@ -1,6 +1,8 @@
 package com.errymaricha.dafydiobooth.ui.launch
 
 import androidx.compose.foundation.background
+import android.net.Uri
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
@@ -27,6 +29,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -70,6 +73,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import android.widget.VideoView
 import java.io.File
 import coil3.compose.AsyncImage
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.qrcode.QRCodeWriter
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -85,6 +90,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.withFrameMillis
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.QrCode
+import androidx.compose.material.icons.filled.Payments
+import androidx.compose.material.icons.automirrored.filled.Backspace
 import androidx.compose.material3.Icon
 import androidx.compose.ui.graphics.drawscope.rotate
 import com.errymaricha.dafydiobooth.domain.model.BoothSession
@@ -98,6 +108,10 @@ import com.errymaricha.dafydiobooth.ui.booth.BoothActions
 import com.errymaricha.dafydiobooth.ui.booth.BoothUiState
 import com.errymaricha.dafydiobooth.ui.booth.LaunchActions
 import com.errymaricha.dafydiobooth.ui.booth.ScreenFrame
+import com.errymaricha.dafydiobooth.ui.booth.AndroidCameraCapture
+import com.errymaricha.dafydiobooth.ui.booth.CameraSurface
+import com.errymaricha.dafydiobooth.ui.booth.CameraSource
+import com.errymaricha.dafydiobooth.ui.booth.TemplateSurface
 
 private val launchPreviewEvents = listOf(
     LaunchEvent(
@@ -196,8 +210,12 @@ fun LaunchPageRedesign(
     onBackToDashboard: () -> Unit = {},
 ) {
     LaunchEventNavHostDemo(
+        state = state,
+        actions = actions,
+        launchState = launchState,
+        launchActions = launchActions,
         initialConfig = state.toLaunchEventConfig(launchState),
-        templates = state.availableTemplateItems.toLaunchTemplates(),
+        templates = state.availableTemplateItems.toLaunchTemplates(state.launchAllowedTemplateIds),
         kioskExitCode = state.kioskExitCode,
         welcomeBgUri = state.welcomeBgUri,
         welcomeBgIsVideo = state.welcomeBgIsVideo,
@@ -1106,7 +1124,6 @@ data class EventLaunchConfig(
 )
 
 sealed class LaunchEventRoute(val route: String) {
-    data object Dashboard : LaunchEventRoute("dashboard")
     data object PraLaunch : LaunchEventRoute("pra_launch_event")
     data object Welcome : LaunchEventRoute("event_welcome")
     data object Payment : LaunchEventRoute("payment")
@@ -1164,21 +1181,13 @@ private val sampleTemplates = listOf(
     PhotoTemplate("tpl-04", "Soft Flash", "4R", 2, LaunchUiTokens.success),
 )
 
-@Composable
-fun DashboardLaunchButton(
-    onLaunchEventClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    LaunchPrimaryButton(
-        text = "Launch Event",
-        onClick = onLaunchEventClick,
-        enabled = true,
-        modifier = modifier,
-    )
-}
 
 @Composable
 fun LaunchEventNavHostDemo(
+    state: BoothUiState = BoothUiState(),
+    actions: BoothActions = BoothActions(),
+    launchState: LaunchUiState = LaunchUiState(),
+    launchActions: LaunchActions = LaunchActions(),
     modifier: Modifier = Modifier,
     initialConfig: EventLaunchConfig = sampleLaunchConfig,
     templates: List<PhotoTemplate> = sampleTemplates,
@@ -1188,32 +1197,27 @@ fun LaunchEventNavHostDemo(
     onBackToDashboard: () -> Unit = {},
 ) {
     val navController = rememberNavController()
-    var selectedTemplate by remember { mutableStateOf(templates.first()) }
+    var selectedTemplate by remember { mutableStateOf(templates.firstOrNull() ?: sampleTemplates.first()) }
+
+    LaunchedEffect(launchState.shouldNavigateToTemplates) {
+        if (launchState.shouldNavigateToTemplates) {
+            navController.navigate(LaunchEventRoute.PickTemplate.route)
+            launchActions.consumeTemplateNavigation()
+        }
+    }
 
     NavHost(
         navController = navController,
-        startDestination = LaunchEventRoute.Dashboard.route,
+        startDestination = LaunchEventRoute.PraLaunch.route,
         modifier = modifier,
     ) {
-        composable(LaunchEventRoute.Dashboard.route) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(LaunchUiTokens.softSurface)
-                    .safeDrawingPadding()
-                    .padding(24.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                DashboardLaunchButton(
-                    onLaunchEventClick = { navController.navigate(LaunchEventRoute.PraLaunch.route) },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        }
         composable(LaunchEventRoute.PraLaunch.route) {
             PraLaunchEventScreen(
                 config = initialConfig,
-                onRunEventClick = { navController.navigate(LaunchEventRoute.Welcome.route) },
+                onRunEventClick = {
+                    launchActions.resetSessionState()
+                    navController.navigate(LaunchEventRoute.Welcome.route)
+                },
             )
         }
         composable(LaunchEventRoute.Welcome.route) {
@@ -1229,10 +1233,24 @@ fun LaunchEventNavHostDemo(
             )
         }
         composable(LaunchEventRoute.Payment.route) {
-            PaymentScreen(
-                config = initialConfig,
-                onPaymentConfirmed = { navController.navigate(LaunchEventRoute.PickTemplate.route) },
-            )
+            if (launchState.isManualPaymentWaiting) {
+                KioskWaitingApprovalScreen(
+                    launchState = launchState,
+                    launchActions = launchActions,
+                    kioskExitCode = kioskExitCode,
+                    onExitToDashboard = onBackToDashboard
+                )
+            } else {
+                PaymentScreen(
+                    config = initialConfig,
+                    state = state,
+                    launchState = launchState,
+                    launchActions = launchActions,
+                    onPaymentConfirmed = {
+                        launchActions.submitManualPaymentRequest()
+                    },
+                )
+            }
         }
         composable(LaunchEventRoute.PickTemplate.route) {
             PickTemplateScreen(
@@ -1240,6 +1258,7 @@ fun LaunchEventNavHostDemo(
                 templates = templates,
                 onTemplateSelected = {
                     selectedTemplate = it
+                    actions.selectTemplate(it.id)
                     navController.navigate(LaunchEventRoute.Capture.route)
                 },
             )
@@ -1248,34 +1267,48 @@ fun LaunchEventNavHostDemo(
             CaptureScreen(
                 eventName = initialConfig.eventName,
                 template = selectedTemplate,
+                state = state,
+                actions = actions,
                 onCaptureFinished = { navController.navigate(LaunchEventRoute.Finished.route) },
                 kioskExitCode = kioskExitCode,
-                onExitToDashboard = {
-                    navController.navigate(LaunchEventRoute.Dashboard.route) {
-                        popUpTo(LaunchEventRoute.Dashboard.route) { inclusive = true }
-                    }
-                },
+                onExitToDashboard = onBackToDashboard,
             )
         }
         composable(LaunchEventRoute.Finished.route) {
             CaptureFinishedScreen(
                 eventName = initialConfig.eventName,
                 template = selectedTemplate,
+                sessionCode = state.session?.sessionCode ?: launchState.session?.sessionCode ?: "SES-DEFAULT",
                 kioskExitCode = kioskExitCode,
+                capturedPhotos = state.capturedPhotosBySlot.values.toList(),
+                onPrintClick = {
+                    actions.triggerMockPrint()
+                },
+                printUsePhotoboothStation = state.printUsePhotoboothStation,
+                isStationConnected = state.isStationConnected,
+                mockPrintStatus = state.mockPrintStatus,
+                mockPrintMessage = state.mockPrintMessage,
+                previewContent = {
+                    TemplateSurface(state = state, modifier = Modifier.fillMaxSize())
+                },
                 onBackToWelcome = {
+                    actions.newSession()
+                    launchActions.resetSessionState()
                     navController.navigate(LaunchEventRoute.Welcome.route) {
                         popUpTo(LaunchEventRoute.Welcome.route) { inclusive = true }
                     }
                 },
                 onStartNewSession = {
+                    actions.newSession()
+                    launchActions.resetSessionState()
                     navController.navigate(LaunchEventRoute.Payment.route) {
                         popUpTo(LaunchEventRoute.Payment.route) { inclusive = true }
                     }
                 },
                 onExitToDashboard = {
-                    navController.navigate(LaunchEventRoute.Dashboard.route) {
-                        popUpTo(LaunchEventRoute.Dashboard.route) { inclusive = true }
-                    }
+                    actions.newSession()
+                    launchActions.resetSessionState()
+                    onBackToDashboard()
                 },
             )
         }
@@ -1341,9 +1374,10 @@ private fun BoothUiState.toLaunchEventConfig(launchState: LaunchUiState): EventL
     )
 }
 
-private fun List<com.errymaricha.dafydiobooth.ui.booth.TemplateListItem>.toLaunchTemplates(): List<PhotoTemplate> {
-    if (isEmpty()) return sampleTemplates
-    return map { template ->
+private fun List<com.errymaricha.dafydiobooth.ui.booth.TemplateListItem>.toLaunchTemplates(allowedIds: Set<String>): List<PhotoTemplate> {
+    val filtered = if (allowedIds.isEmpty()) this else this.filter { it.templateId in allowedIds }
+    if (filtered.isEmpty()) return sampleTemplates
+    return filtered.map { template ->
         PhotoTemplate(
             id = template.templateId,
             name = template.templateName,
@@ -1355,6 +1389,93 @@ private fun List<com.errymaricha.dafydiobooth.ui.booth.TemplateListItem>.toLaunc
                 else -> LaunchUiTokens.primary
             },
         )
+    }
+}
+
+@Composable
+private fun StationRadarAnimation(
+    modifier: Modifier = Modifier,
+    isOnline: Boolean = true
+) {
+    val transition = rememberInfiniteTransition(label = "Radar")
+    val radarScale1 by transition.animateFloat(
+        initialValue = 0.4f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2000, easing = androidx.compose.animation.core.LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "radarScale1"
+    )
+    val radarAlpha1 by transition.animateFloat(
+        initialValue = 0.8f,
+        targetValue = 0.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2000, easing = androidx.compose.animation.core.LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "radarAlpha1"
+    )
+
+    val radarScale2 by transition.animateFloat(
+        initialValue = 0.4f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2000, delayMillis = 1000, easing = androidx.compose.animation.core.LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "radarScale2"
+    )
+    val radarAlpha2 by transition.animateFloat(
+        initialValue = 0.8f,
+        targetValue = 0.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2000, delayMillis = 1000, easing = androidx.compose.animation.core.LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "radarAlpha2"
+    )
+
+    val radarColor = if (isOnline) LaunchUiTokens.success else LaunchUiTokens.warning
+
+    Box(
+        modifier = modifier.size(110.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = radarScale1
+                    scaleY = radarScale1
+                    alpha = radarAlpha1
+                }
+                .border(2.dp, radarColor, CircleShape)
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = radarScale2
+                    scaleY = radarScale2
+                    alpha = radarAlpha2
+                }
+                .border(2.dp, radarColor, CircleShape)
+        )
+        Box(
+            modifier = Modifier
+                .size(46.dp)
+                .background(radarColor.copy(alpha = 0.15f), CircleShape)
+                .border(2.dp, radarColor, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = if (isOnline) Icons.Default.Check else Icons.Default.Warning,
+                contentDescription = "Radar Status",
+                tint = radarColor,
+                modifier = Modifier.size(22.dp)
+            )
+        }
     }
 }
 
@@ -1371,47 +1492,296 @@ fun PraLaunchEventScreen(
             .safeDrawingPadding(),
     ) {
         val isTablet = maxWidth >= 900.dp
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                horizontal = if (isTablet) 28.dp else 16.dp,
-                vertical = if (isTablet) 24.dp else 16.dp,
-            ),
+        
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(if (isTablet) 32.dp else 16.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            item {
-                LaunchHeroCard(
-                    title = "Pra Launch Event",
-                    subtitle = "Cek seluruh konfigurasi event sebelum station masuk ke mode kiosk.",
-                    badge = config.statusLabel,
-                    badgeAccent = LaunchUiTokens.success,
-                )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Event Control Center",
+                        style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+                        color = LaunchUiTokens.ink
+                    )
+                    Text(
+                        text = "Review event details and launch the kiosk station.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = LaunchUiTokens.inkSoft
+                    )
+                }
+                
+                Surface(
+                    shape = RoundedCornerShape(99.dp),
+                    color = LaunchUiTokens.success.copy(alpha = 0.15f),
+                    border = BorderStroke(1.dp, LaunchUiTokens.success.copy(alpha = 0.3f))
+                ) {
+                    Text(
+                        text = config.statusLabel.uppercase(),
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                        color = LaunchUiTokens.success,
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
             }
+
             if (isTablet) {
-                item {
-                    Row(horizontalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                            EventInfoCard(config)
-                            WelcomeConfigCard(config.welcomeConfig, config.defaultTemplateLabel)
+                Row(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(24.dp)
+                ) {
+                    Surface(
+                        modifier = Modifier.weight(1.1f).fillMaxHeight(),
+                        shape = RoundedCornerShape(24.dp),
+                        color = Color.White,
+                        border = BorderStroke(1.dp, LaunchUiTokens.border)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp).verticalScroll(rememberScrollState()),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Text(
+                                text = "Station Connection",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                color = LaunchUiTokens.ink,
+                                modifier = Modifier.align(Alignment.Start)
+                            )
+                            
+                            StationRadarAnimation(
+                                modifier = Modifier.size(76.dp),
+                                isOnline = true
+                            )
+                            
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    text = "Photobooth Station Active",
+                                    color = LaunchUiTokens.success,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp
+                                )
+                                Text(
+                                    text = "Device is paired with station server.",
+                                    color = LaunchUiTokens.inkSoft,
+                                    fontSize = 11.sp,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                            
+                            Spacer(modifier = Modifier.fillMaxWidth().height(1.dp).background(LaunchUiTokens.border))
+                            
+                            CompactEventDetailsCard(config)
                         }
-                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                            TransactionConfigCard(config)
-                            ChecklistCard(config.checklist)
+                    }
+
+                    Column(
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                        verticalArrangement = Arrangement.spacedBy(20.dp)
+                    ) {
+                        Surface(
+                            modifier = Modifier.weight(1f).fillMaxWidth(),
+                            shape = RoundedCornerShape(24.dp),
+                            color = Color.White,
+                            border = BorderStroke(1.dp, LaunchUiTokens.border)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(24.dp).verticalScroll(rememberScrollState()),
+                                verticalArrangement = Arrangement.spacedBy(20.dp)
+                            ) {
+                                TransactionConfigCard(config)
+                                ChecklistCard(config.checklist)
+                            }
+                        }
+
+                        Button(
+                            onClick = onRunEventClick,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(64.dp)
+                                .border(
+                                    width = 2.dp,
+                                    brush = Brush.horizontalGradient(listOf(LaunchUiTokens.primary, LaunchUiTokens.pink)),
+                                    shape = RoundedCornerShape(20.dp)
+                                ),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = LaunchUiTokens.primary
+                            ),
+                            shape = RoundedCornerShape(20.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(
+                                        Brush.horizontalGradient(
+                                            listOf(
+                                                LaunchUiTokens.primary,
+                                                LaunchUiTokens.pink
+                                            )
+                                        )
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "RUN KIOSK EVENT",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 18.sp,
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                            }
                         }
                     }
                 }
             } else {
-                item { EventInfoCard(config) }
-                item { WelcomeConfigCard(config.welcomeConfig, config.defaultTemplateLabel) }
-                item { TransactionConfigCard(config) }
-                item { ChecklistCard(config.checklist) }
+                Column(
+                    modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = Color.White,
+                        border = BorderStroke(1.dp, LaunchUiTokens.border)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            StationRadarAnimation(isOnline = true)
+                            Text("Station Active", color = LaunchUiTokens.success, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    EventInfoCard(config)
+                    WelcomeConfigCard(config.welcomeConfig, config.defaultTemplateLabel)
+                    TransactionConfigCard(config)
+                    ChecklistCard(config.checklist)
+                    
+                    Spacer(modifier = Modifier.height(10.dp))
+                    
+                    Button(
+                        onClick = onRunEventClick,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp)
+                            .border(
+                                width = 1.dp,
+                                brush = Brush.horizontalGradient(listOf(LaunchUiTokens.primary, LaunchUiTokens.pink)),
+                                shape = RoundedCornerShape(16.dp)
+                            ),
+                        colors = ButtonDefaults.buttonColors(containerColor = LaunchUiTokens.primary),
+                        shape = RoundedCornerShape(16.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Brush.horizontalGradient(listOf(LaunchUiTokens.primary, LaunchUiTokens.pink))),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "RUN KIOSK EVENT",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
+                            )
+                        }
+                    }
+                }
             }
-            item {
-                LaunchPrimaryButton(
-                    text = "Run Event",
-                    onClick = onRunEventClick,
-                    enabled = true,
-                )
+        }
+    }
+}
+
+@Composable
+private fun KioskDialpad(
+    onDigitClick: (String) -> Unit,
+    onBackspaceClick: () -> Unit,
+    onClearClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val keys = listOf(
+        listOf("1", "2", "3"),
+        listOf("4", "5", "6"),
+        listOf("7", "8", "9"),
+        listOf("Clear", "0", "Backspace")
+    )
+
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        keys.forEach { rowKeys ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                rowKeys.forEach { key ->
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .aspectRatio(2.3f)
+                            .background(
+                                color = if (key == "Backspace" || key == "Clear") {
+                                    LaunchUiTokens.primary.copy(alpha = 0.08f)
+                                } else {
+                                    Color.White
+                                },
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            .border(
+                                width = 1.dp,
+                                color = if (key == "Backspace" || key == "Clear") {
+                                    LaunchUiTokens.primary.copy(alpha = 0.15f)
+                                } else {
+                                    LaunchUiTokens.border
+                                },
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            .clickable {
+                                when (key) {
+                                    "Backspace" -> onBackspaceClick()
+                                    "Clear" -> onClearClick()
+                                    else -> onDigitClick(key)
+                                }
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        when (key) {
+                            "Backspace" -> {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.Backspace,
+                                    contentDescription = "Backspace",
+                                    tint = LaunchUiTokens.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            "Clear" -> {
+                                Text(
+                                    text = "CLR",
+                                    color = LaunchUiTokens.primary,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp
+                                )
+                            }
+                            else -> {
+                                Text(
+                                    text = key,
+                                    color = LaunchUiTokens.ink,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.sp
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -1423,8 +1793,20 @@ private fun WelcomeVideoPlayer(
     modifier: Modifier = Modifier,
     isMuted: Boolean = true
 ) {
-    val file = remember(filePath) { File(filePath) }
-    if (!file.exists()) {
+    val context = LocalContext.current
+    val fileExists = remember(filePath) {
+        if (filePath.startsWith("content://")) {
+            try {
+                context.contentResolver.openAssetFileDescriptor(Uri.parse(filePath), "r")?.use { }
+                true
+            } catch (e: Exception) {
+                false
+            }
+        } else {
+            File(filePath).exists()
+        }
+    }
+    if (!fileExists) {
         Box(
             modifier = modifier.background(Color.Black),
             contentAlignment = Alignment.Center
@@ -1448,14 +1830,19 @@ private fun WelcomeVideoPlayer(
             }
         },
         update = { videoView ->
-            if (videoView.tag != filePath) {
-                videoView.tag = filePath
-                try {
-                    videoView.setVideoPath(filePath)
+            try {
+                val currentTag = videoView.tag as? String
+                if (currentTag != filePath) {
+                    videoView.tag = filePath
+                    if (filePath.startsWith("content://")) {
+                        videoView.setVideoURI(Uri.parse(filePath))
+                    } else {
+                        videoView.setVideoPath(filePath)
+                    }
                     videoView.start()
-                } catch (e: Exception) {
-                    e.printStackTrace()
                 }
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         },
         modifier = modifier
@@ -1504,7 +1891,7 @@ fun EventWelcomeScreen(
                 )
             } else {
                 AsyncImage(
-                    model = File(welcomeBgUri),
+                    model = if (welcomeBgUri.startsWith("content://")) Uri.parse(welcomeBgUri) else File(welcomeBgUri),
                     contentDescription = "Welcome Background Image",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
@@ -1668,14 +2055,98 @@ fun EventWelcomeScreen(
 }
 
 @Composable
+fun KioskWaitingApprovalScreen(
+    launchState: LaunchUiState,
+    launchActions: LaunchActions,
+    kioskExitCode: String,
+    onExitToDashboard: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    BoxWithConstraints(
+        modifier = modifier
+            .fillMaxSize()
+            .background(LaunchUiTokens.softSurface)
+            .safeDrawingPadding()
+            .padding(24.dp)
+    ) {
+        val isTablet = maxWidth >= 900.dp
+        Column(
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            LaunchStatusCard(
+                title = "Approval Flow",
+                message = launchState.message ?: "Menunggu approval manual dari Photobooth Station...",
+                accent = LaunchUiTokens.warning,
+            )
+            LaunchHeroCard(
+                title = "Menunggu Persetujuan",
+                subtitle = "Pembayaran manual sedang diperiksa oleh operator.",
+                badge = "WAITING",
+                badgeAccent = LaunchUiTokens.warning,
+            )
+            if (isTablet) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.fillMaxWidth().weight(1f)
+                ) {
+                    LaunchSectionCard(
+                        title = "Status Pembayaran",
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        LaunchMetricRow(
+                            "Kode Sesi" to (launchState.session?.sessionCode ?: "-"),
+                            "WhatsApp" to launchState.customerWhatsapp,
+                            "Status" to (launchState.approvalStatus ?: "pending"),
+                        )
+                    }
+                    LaunchSectionCard(
+                        title = "Aksi Operator",
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        LaunchPrimaryButton(
+                            text = "Periksa Status Manual",
+                            onClick = launchActions.checkManualPaymentApproval,
+                            enabled = !launchState.loading,
+                        )
+                    }
+                }
+            } else {
+                LaunchSectionCard(
+                    title = "Status Pembayaran"
+                ) {
+                    LaunchMetricRow(
+                        "Kode Sesi" to (launchState.session?.sessionCode ?: "-"),
+                        "WhatsApp" to launchState.customerWhatsapp,
+                        "Status" to (launchState.approvalStatus ?: "pending"),
+                    )
+                }
+                LaunchPrimaryButton(
+                    text = "Periksa Status Manual",
+                    onClick = launchActions.checkManualPaymentApproval,
+                    enabled = !launchState.loading,
+                )
+            }
+        }
+        
+        KioskExitOverlay(
+            exitCode = kioskExitCode,
+            onAuthorizedExit = onExitToDashboard,
+        )
+    }
+}
+
+@Composable
 fun PaymentScreen(
     config: EventLaunchConfig,
+    state: BoothUiState = BoothUiState(),
+    launchState: LaunchUiState = LaunchUiState(),
+    launchActions: LaunchActions = LaunchActions(),
     onPaymentConfirmed: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var whatsapp by remember(config.paymentConfig.defaultWhatsapp) { mutableStateOf(config.paymentConfig.defaultWhatsapp) }
-    var voucher by remember(config.paymentConfig.defaultVoucher?.code) { mutableStateOf(config.paymentConfig.defaultVoucher?.code.orEmpty()) }
     var selectedPayment by remember { mutableStateOf(config.paymentConfig.availablePaymentTypes.first()) }
+    var showVoucherInput by remember { mutableStateOf(false) }
 
     BoxWithConstraints(
         modifier = modifier
@@ -1695,78 +2166,579 @@ fun PaymentScreen(
             item {
                 LaunchHeroCard(
                     title = "Payment",
-                    subtitle = "Lengkapi data guest dan konfirmasi pembayaran sebelum pilih template.",
+                    subtitle = "Lengkapi nomor WhatsApp Anda dan selesaikan pembayaran untuk mulai.",
                     badge = "READY",
                     badgeAccent = LaunchUiTokens.primary,
                 )
             }
             if (isTablet) {
                 item {
-                    Row(horizontalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.fillMaxWidth()) {
-                        LaunchSectionCard(title = "Data Transaksi", modifier = Modifier.weight(1f)) {
-                            OutlinedTextField(value = whatsapp, onValueChange = { whatsapp = it }, label = { Text("Nomor WhatsApp") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                            OutlinedTextField(value = voucher, onValueChange = { voucher = it }, label = { Text("Voucher") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                            Text("Tipe Pembayaran", color = LaunchUiTokens.ink, fontWeight = FontWeight.SemiBold)
-                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        // Kiri: WhatsApp & Dialpad (weight 1.1f)
+                        LaunchSectionCard(
+                            title = "1. Nomor WhatsApp",
+                            modifier = Modifier.weight(1.1f)
+                        ) {
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = LaunchUiTokens.softSurface,
+                                    border = BorderStroke(1.dp, LaunchUiTokens.border)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(
+                                            text = "Masukkan nomor WhatsApp aktif Anda untuk menerima foto:",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = LaunchUiTokens.inkSoft
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Surface(
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = LaunchUiTokens.primary.copy(alpha = 0.1f),
+                                            ) {
+                                                Text(
+                                                    text = "+62",
+                                                    color = LaunchUiTokens.primary,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 14.sp,
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                )
+                                            }
+                                            
+                                            OutlinedTextField(
+                                                value = launchState.customerWhatsapp,
+                                                onValueChange = { val clean = it.filter { c -> c.isDigit() }; launchActions.onWhatsappChanged(clean) },
+                                                readOnly = true,
+                                                placeholder = { Text("8123456789", color = LaunchUiTokens.inkSoft.copy(alpha = 0.5f)) },
+                                                singleLine = true,
+                                                modifier = Modifier.weight(1f),
+                                                textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = LaunchUiTokens.ink
+                                                ),
+                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                KioskDialpad(
+                                    onDigitClick = { digit ->
+                                        val current = launchState.customerWhatsapp
+                                        if (current.length < 13) {
+                                            launchActions.onWhatsappChanged(current + digit)
+                                        }
+                                    },
+                                    onBackspaceClick = {
+                                        val current = launchState.customerWhatsapp
+                                        if (current.isNotEmpty()) {
+                                            launchActions.onWhatsappChanged(current.dropLast(1))
+                                        }
+                                    },
+                                    onClearClick = {
+                                        launchActions.onWhatsappChanged("")
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+
+                        // Kanan: Summary, Payment Option, Voucher, Action (weight 0.9f)
+                        LaunchSectionCard(
+                            title = "2. Informasi Pembayaran",
+                            modifier = Modifier.weight(0.9f)
+                        ) {
+                            val totalAmount = launchState.quote?.amount ?: launchState.finalAmount
+                            val isFree = totalAmount == 0.0
+
+                            // 1. Rincian Harga Simple
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = LaunchUiTokens.softSurface,
+                                border = BorderStroke(1.dp, LaunchUiTokens.border),
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(14.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("Paket", style = MaterialTheme.typography.bodyMedium, color = LaunchUiTokens.inkSoft)
+                                        Text(config.orderSummary.packageName, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold), color = LaunchUiTokens.ink)
+                                    }
+                                    val subtotal = launchState.pricing?.photoboothPrice ?: 0.0
+                                    val discount = launchState.quote?.discountAmount?.toDouble() ?: 0.0
+                                    
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("Harga", style = MaterialTheme.typography.bodyMedium, color = LaunchUiTokens.inkSoft)
+                                        Text("Rp ${subtotal.toLong()}", style = MaterialTheme.typography.bodyMedium, color = LaunchUiTokens.ink)
+                                    }
+                                    if (discount > 0) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text("Diskon", style = MaterialTheme.typography.bodyMedium, color = LaunchUiTokens.inkSoft)
+                                            Text("-Rp ${discount.toLong()}", style = MaterialTheme.typography.bodyMedium.copy(color = Color(0xFF10B981), fontWeight = FontWeight.SemiBold))
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(1.dp).fillMaxWidth().background(LaunchUiTokens.border))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.Bottom
+                                    ) {
+                                        Text("Total Bayar", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold), color = LaunchUiTokens.ink)
+                                        Text(
+                                            text = if (isFree) "GRATIS" else "Rp ${totalAmount.toLong()}",
+                                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold, color = LaunchUiTokens.primary)
+                                        )
+                                    }
+                                }
+                            }
+
+                            // 2. Metode Pembayaran Visual
+                            Text("Pilih Metode Pembayaran", color = LaunchUiTokens.ink, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
                                 config.paymentConfig.availablePaymentTypes.forEach { option ->
-                                    FilterChip(
-                                        selected = selectedPayment == option,
-                                        onClick = { selectedPayment = option },
-                                        label = { Text(option.label) },
+                                    val isSelected = selectedPayment == option
+                                    Surface(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clickable { selectedPayment = option },
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = if (isSelected) LaunchUiTokens.primary.copy(alpha = 0.08f) else LaunchUiTokens.softSurface,
+                                        border = BorderStroke(
+                                            width = if (isSelected) 2.dp else 1.dp,
+                                            color = if (isSelected) LaunchUiTokens.primary else LaunchUiTokens.border
+                                        )
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(vertical = 12.dp, horizontal = 8.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            val icon = when (option) {
+                                                LaunchPaymentOption.Qris -> Icons.Default.QrCode
+                                                LaunchPaymentOption.Manual -> Icons.Default.Payments
+                                                LaunchPaymentOption.Free -> Icons.Default.CheckCircle
+                                            }
+                                            Icon(
+                                                imageVector = icon,
+                                                contentDescription = option.label,
+                                                tint = if (isSelected) LaunchUiTokens.primary else LaunchUiTokens.inkSoft,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                            Text(
+                                                text = when (option) {
+                                                    LaunchPaymentOption.Qris -> "QRIS / Scan QR"
+                                                    LaunchPaymentOption.Manual -> "Bayar di Kasir"
+                                                    LaunchPaymentOption.Free -> "Gratis"
+                                                },
+                                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                                color = if (isSelected) LaunchUiTokens.primary else LaunchUiTokens.ink,
+                                                textAlign = TextAlign.Center
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 3. Voucher Collapsible
+                            if (!showVoucherInput) {
+                                TextButton(
+                                    onClick = { showVoucherInput = true },
+                                    modifier = Modifier.align(Alignment.Start)
+                                ) {
+                                    Text("+ Gunakan Kode Voucher", color = LaunchUiTokens.primary, fontWeight = FontWeight.SemiBold)
+                                }
+                            } else {
+                                OutlinedTextField(
+                                    value = launchState.voucherCode,
+                                    onValueChange = launchActions.onVoucherCodeChanged,
+                                    label = { Text("Masukkan Kode Voucher") },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    trailingIcon = {
+                                        if (launchState.voucherCode.isNotBlank()) {
+                                            Button(
+                                                onClick = launchActions.checkVoucherAndQuote,
+                                                shape = RoundedCornerShape(8.dp),
+                                                modifier = Modifier.padding(end = 8.dp)
+                                            ) {
+                                                Text("Cek")
+                                            }
+                                        }
+                                    }
+                                )
+                            }
+
+                            // QR Code
+                            if (selectedPayment == LaunchPaymentOption.Qris && !launchState.quote?.paymentUrl.isNullOrBlank()) {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    FakeQrCode(
+                                        value = launchState.quote!!.paymentUrl!!,
+                                        modifier = Modifier.size(160.dp),
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(
+                                        "Scan QR Code untuk membayar",
+                                        color = LaunchUiTokens.inkSoft,
+                                        style = MaterialTheme.typography.labelSmall
                                     )
                                 }
                             }
-                        }
-                        LaunchSectionCard(title = "Ringkasan Order", modifier = Modifier.weight(1f)) {
-                            LaunchMetricRow(
-                                "Event" to config.orderSummary.eventName,
-                                "Paket" to config.orderSummary.packageName,
-                            )
-                            LaunchMetricRow(
-                                "Harga" to config.orderSummary.priceLabel,
-                                "Diskon" to if (voucher.isBlank()) "IDR 0" else config.orderSummary.discountLabel,
-                                "Total" to config.orderSummary.totalLabel,
-                            )
+
+                            val btnText = when {
+                                isFree -> "Mulai Foto (Gratis)"
+                                selectedPayment == LaunchPaymentOption.Qris && launchState.quote?.paymentUrl.isNullOrBlank() -> "Dapatkan QR Code"
+                                selectedPayment == LaunchPaymentOption.Qris -> "Saya Sudah Bayar (Lanjutkan)"
+                                else -> "Bayar Cash di Kasir"
+                            }
+
+                            if (!launchState.error.isNullOrBlank()) {
+                                Text(
+                                    text = launchState.error,
+                                    color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.padding(vertical = 4.dp)
+                                )
+                            }
+                            if (!launchState.message.isNullOrBlank()) {
+                                Text(
+                                    text = launchState.message,
+                                    color = LaunchUiTokens.primary,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.padding(vertical = 4.dp)
+                                )
+                            }
+
                             LaunchPrimaryButton(
-                                text = "Konfirmasi Pembayaran",
-                                onClick = onPaymentConfirmed,
-                                enabled = true,
+                                text = btnText,
+                                onClick = {
+                                    if (isFree) {
+                                        launchActions.submitManualPaymentRequest()
+                                    } else if (selectedPayment == LaunchPaymentOption.Qris) {
+                                        if (launchState.quote?.paymentUrl.isNullOrBlank()) {
+                                            launchActions.quoteQrPayment()
+                                        } else {
+                                            launchActions.submitManualPaymentRequest()
+                                        }
+                                    } else {
+                                        launchActions.submitManualPaymentRequest()
+                                    }
+                                },
+                                enabled = !launchState.loading,
                             )
                         }
                     }
                 }
             } else {
+                // Mobile stacked layout
                 item {
-                    LaunchSectionCard(title = "Data Transaksi") {
-                        OutlinedTextField(value = whatsapp, onValueChange = { whatsapp = it }, label = { Text("Nomor WhatsApp") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                        OutlinedTextField(value = voucher, onValueChange = { voucher = it }, label = { Text("Voucher") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                        Text("Tipe Pembayaran", color = LaunchUiTokens.ink, fontWeight = FontWeight.SemiBold)
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            config.paymentConfig.availablePaymentTypes.forEach { option ->
-                                FilterChip(
-                                    selected = selectedPayment == option,
-                                    onClick = { selectedPayment = option },
-                                    label = { Text(option.label) },
-                                )
+                    LaunchSectionCard(title = "1. Nomor WhatsApp") {
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(14.dp),
+                                color = LaunchUiTokens.softSurface,
+                                border = BorderStroke(1.dp, LaunchUiTokens.border)
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = "Masukkan nomor WhatsApp aktif Anda untuk menerima foto:",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = LaunchUiTokens.inkSoft
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = LaunchUiTokens.primary.copy(alpha = 0.1f),
+                                        ) {
+                                            Text(
+                                                text = "+62",
+                                                color = LaunchUiTokens.primary,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 14.sp,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                            )
+                                        }
+                                        
+                                        OutlinedTextField(
+                                            value = launchState.customerWhatsapp,
+                                            onValueChange = { val clean = it.filter { c -> c.isDigit() }; launchActions.onWhatsappChanged(clean) },
+                                            readOnly = true,
+                                            placeholder = { Text("8123456789", color = LaunchUiTokens.inkSoft.copy(alpha = 0.5f)) },
+                                            singleLine = true,
+                                            modifier = Modifier.weight(1f),
+                                            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                color = LaunchUiTokens.ink
+                                            ),
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                                        )
+                                    }
+                                }
                             }
+                            
+                            KioskDialpad(
+                                onDigitClick = { digit ->
+                                    val current = launchState.customerWhatsapp
+                                    if (current.length < 13) {
+                                        launchActions.onWhatsappChanged(current + digit)
+                                    }
+                                },
+                                onBackspaceClick = {
+                                    val current = launchState.customerWhatsapp
+                                    if (current.isNotEmpty()) {
+                                        launchActions.onWhatsappChanged(current.dropLast(1))
+                                    }
+                                },
+                                onClearClick = {
+                                    launchActions.onWhatsappChanged("")
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            )
                         }
                     }
                 }
                 item {
-                    LaunchSectionCard(title = "Ringkasan Order") {
-                        LaunchMetricRow(
-                            "Event" to config.orderSummary.eventName,
-                            "Paket" to config.orderSummary.packageName,
-                        )
-                        LaunchMetricRow(
-                            "Harga" to config.orderSummary.priceLabel,
-                            "Diskon" to if (voucher.isBlank()) "IDR 0" else config.orderSummary.discountLabel,
-                            "Total" to config.orderSummary.totalLabel,
-                        )
+                    LaunchSectionCard(title = "2. Informasi Pembayaran") {
+                        val totalAmount = launchState.quote?.amount ?: launchState.finalAmount
+                        val isFree = totalAmount == 0.0
+
+                        // 1. Rincian Harga Simple
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = LaunchUiTokens.softSurface,
+                            border = BorderStroke(1.dp, LaunchUiTokens.border),
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("Paket", style = MaterialTheme.typography.bodyMedium, color = LaunchUiTokens.inkSoft)
+                                    Text(config.orderSummary.packageName, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold), color = LaunchUiTokens.ink)
+                                }
+                                val subtotal = launchState.pricing?.photoboothPrice ?: 0.0
+                                val discount = launchState.quote?.discountAmount?.toDouble() ?: 0.0
+                                
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("Harga", style = MaterialTheme.typography.bodyMedium, color = LaunchUiTokens.inkSoft)
+                                    Text("Rp ${subtotal.toLong()}", style = MaterialTheme.typography.bodyMedium, color = LaunchUiTokens.ink)
+                                }
+                                if (discount > 0) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("Diskon", style = MaterialTheme.typography.bodyMedium, color = LaunchUiTokens.inkSoft)
+                                        Text("-Rp ${discount.toLong()}", style = MaterialTheme.typography.bodyMedium.copy(color = Color(0xFF10B981), fontWeight = FontWeight.SemiBold))
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(1.dp).fillMaxWidth().background(LaunchUiTokens.border))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.Bottom
+                                ) {
+                                    Text("Total Bayar", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold), color = LaunchUiTokens.ink)
+                                    Text(
+                                        text = if (isFree) "GRATIS" else "Rp ${totalAmount.toLong()}",
+                                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold, color = LaunchUiTokens.primary)
+                                    )
+                                }
+                            }
+                        }
+
+                        // 2. Metode Pembayaran Visual
+                        Text("Pilih Metode Pembayaran", color = LaunchUiTokens.ink, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            config.paymentConfig.availablePaymentTypes.forEach { option ->
+                                val isSelected = selectedPayment == option
+                                Surface(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable { selectedPayment = option },
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isSelected) LaunchUiTokens.primary.copy(alpha = 0.08f) else LaunchUiTokens.softSurface,
+                                    border = BorderStroke(
+                                        width = if (isSelected) 2.dp else 1.dp,
+                                        color = if (isSelected) LaunchUiTokens.primary else LaunchUiTokens.border
+                                    )
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(vertical = 12.dp, horizontal = 8.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        val icon = when (option) {
+                                            LaunchPaymentOption.Qris -> Icons.Default.QrCode
+                                            LaunchPaymentOption.Manual -> Icons.Default.Payments
+                                            LaunchPaymentOption.Free -> Icons.Default.CheckCircle
+                                        }
+                                        Icon(
+                                            imageVector = icon,
+                                            contentDescription = option.label,
+                                            tint = if (isSelected) LaunchUiTokens.primary else LaunchUiTokens.inkSoft,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                        Text(
+                                            text = when (option) {
+                                                LaunchPaymentOption.Qris -> "QRIS / Scan QR"
+                                                LaunchPaymentOption.Manual -> "Bayar di Kasir"
+                                                LaunchPaymentOption.Free -> "Gratis"
+                                            },
+                                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                            color = if (isSelected) LaunchUiTokens.primary else LaunchUiTokens.ink,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // 3. Voucher Collapsible
+                        if (!showVoucherInput) {
+                            TextButton(
+                                onClick = { showVoucherInput = true },
+                                modifier = Modifier.align(Alignment.Start)
+                            ) {
+                                Text("+ Gunakan Kode Voucher", color = LaunchUiTokens.primary, fontWeight = FontWeight.SemiBold)
+                            }
+                        } else {
+                            OutlinedTextField(
+                                value = launchState.voucherCode,
+                                onValueChange = launchActions.onVoucherCodeChanged,
+                                label = { Text("Masukkan Kode Voucher") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                trailingIcon = {
+                                    if (launchState.voucherCode.isNotBlank()) {
+                                        Button(
+                                            onClick = launchActions.checkVoucherAndQuote,
+                                            shape = RoundedCornerShape(8.dp),
+                                            modifier = Modifier.padding(end = 8.dp)
+                                        ) {
+                                            Text("Cek")
+                                        }
+                                    }
+                                }
+                            )
+                        }
+
+                        // QR Code
+                        if (selectedPayment == LaunchPaymentOption.Qris && !launchState.quote?.paymentUrl.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                FakeQrCode(
+                                    value = launchState.quote!!.paymentUrl!!,
+                                    modifier = Modifier.size(160.dp),
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    "Scan QR Code untuk membayar",
+                                    color = LaunchUiTokens.inkSoft,
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                            }
+                        }
+
+                        val btnText = when {
+                            isFree -> "Mulai Foto (Gratis)"
+                            selectedPayment == LaunchPaymentOption.Qris && launchState.quote?.paymentUrl.isNullOrBlank() -> "Dapatkan QR Code"
+                            selectedPayment == LaunchPaymentOption.Qris -> "Saya Sudah Bayar (Lanjutkan)"
+                            else -> "Bayar Cash di Kasir"
+                        }
+
+                        if (!launchState.error.isNullOrBlank()) {
+                            Text(
+                                text = launchState.error,
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(vertical = 4.dp)
+                            )
+                        }
+                        if (!launchState.message.isNullOrBlank()) {
+                            Text(
+                                text = launchState.message,
+                                color = LaunchUiTokens.primary,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(vertical = 4.dp)
+                            )
+                        }
+
                         LaunchPrimaryButton(
-                            text = "Konfirmasi Pembayaran",
-                            onClick = onPaymentConfirmed,
-                            enabled = true,
+                            text = btnText,
+                            onClick = {
+                                if (isFree) {
+                                    launchActions.submitManualPaymentRequest()
+                                } else if (selectedPayment == LaunchPaymentOption.Qris) {
+                                    if (launchState.quote?.paymentUrl.isNullOrBlank()) {
+                                        launchActions.quoteQrPayment()
+                                    } else {
+                                        launchActions.submitManualPaymentRequest()
+                                    }
+                                } else {
+                                    launchActions.submitManualPaymentRequest()
+                                }
+                            },
+                            enabled = !launchState.loading,
                         )
                     }
                 }
@@ -1828,11 +2800,27 @@ fun PickTemplateScreen(
 fun CaptureScreen(
     eventName: String,
     template: PhotoTemplate,
+    state: BoothUiState = BoothUiState(),
+    actions: BoothActions = BoothActions(),
     onCaptureFinished: () -> Unit,
     kioskExitCode: String = "123456",
     onExitToDashboard: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    val capturedCount = state.capturedPhotosBySlot.size
+    val totalSlots = state.templateSlotCount.takeIf { it > 0 } ?: template.frameCount
+
+    LaunchedEffect(capturedCount) {
+        if (capturedCount >= totalSlots && totalSlots > 0) {
+            onCaptureFinished()
+        }
+    }
+
+    val orderedSlots = state.selectedTemplateSlots.sortedBy { it.slotIndex }
+    val captureSlots = orderedSlots.map { it.sourceSlotIndex }.distinct().sorted()
+    val nextCaptureSlot = captureSlots.firstOrNull { !state.capturedPhotosBySlot.containsKey(it) }
+        ?: captureSlots.lastOrNull()
+
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
@@ -1855,7 +2843,7 @@ fun CaptureScreen(
                         "Template" to template.name,
                     )
                     Text(
-                        text = "${template.sizeLabel} • ${template.frameCount} frame",
+                        text = "${template.sizeLabel} • $totalSlots frame",
                         color = LaunchUiTokens.inkSoft,
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -1863,55 +2851,64 @@ fun CaptureScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(180.dp)
-                            .background(
-                                template.accent.copy(alpha = 0.22f),
-                                RoundedCornerShape(20.dp),
-                            )
-                            .border(1.dp, LaunchUiTokens.border, RoundedCornerShape(20.dp)),
-                        contentAlignment = Alignment.Center,
+                            .clip(RoundedCornerShape(20.dp)),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Text("Preview template", color = LaunchUiTokens.inkSoft)
+                        TemplateSurface(state = state, modifier = Modifier.fillMaxSize())
                     }
                     Text(
                         text = "Hasil capture",
                         color = LaunchUiTokens.ink,
                         fontWeight = FontWeight.SemiBold,
                     )
+
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                        repeat(template.frameCount.coerceAtMost(4)) { index ->
+                        captureSlots.forEach { slotIdx ->
+                            val photoPath = state.capturedPhotosBySlot[slotIdx]
+                            val captured = photoPath != null
+                            val isActive = slotIdx == nextCaptureSlot && !captured
+
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
                                     .height(110.dp)
+                                    .clip(RoundedCornerShape(18.dp))
                                     .background(
-                                        Brush.verticalGradient(
-                                            colors = listOf(
-                                                template.accent.copy(alpha = 0.26f),
-                                                Color.White,
-                                            ),
-                                        ),
-                                        RoundedCornerShape(18.dp),
+                                        if (isActive) template.accent.copy(alpha = 0.22f) else Color.White,
                                     )
-                                    .border(1.dp, LaunchUiTokens.border, RoundedCornerShape(18.dp)),
+                                    .border(
+                                        width = if (isActive) 2.dp else 1.dp,
+                                        color = if (isActive) template.accent else LaunchUiTokens.border,
+                                        shape = RoundedCornerShape(18.dp)
+                                    ),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    Surface(
-                                        shape = RoundedCornerShape(999.dp),
-                                        color = if (index == 0) LaunchUiTokens.primary.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.82f),
+                                if (photoPath != null) {
+                                    AsyncImage(
+                                        model = File(photoPath),
+                                        contentDescription = "Slot $slotIdx",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(18.dp))
+                                    )
+                                } else {
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(8.dp),
                                     ) {
-                                        Text(
-                                            text = if (index == 0) "Aktif" else "Frame ${index + 1}",
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                            color = if (index == 0) LaunchUiTokens.primary else LaunchUiTokens.inkSoft,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.SemiBold,
-                                        )
+                                        Surface(
+                                            shape = RoundedCornerShape(999.dp),
+                                            color = if (isActive) template.accent.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.82f),
+                                        ) {
+                                            Text(
+                                                text = if (isActive) "Aktif" else "Frame ${slotIdx + 1}",
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                                color = if (isActive) template.accent else LaunchUiTokens.inkSoft,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.SemiBold,
+                                            )
+                                        }
+                                        Text("Shot ${slotIdx + 1}", color = LaunchUiTokens.inkSoft)
                                     }
-                                    Text("Shot ${index + 1}", color = LaunchUiTokens.inkSoft)
                                 }
                             }
                         }
@@ -1921,74 +2918,76 @@ fun CaptureScreen(
                     modifier = Modifier.weight(1.42f),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
+                    val activeSlotLabel = nextCaptureSlot?.let { "Shot ${it + 1}" } ?: "Siap"
                     LaunchStatusPills(
                         "Event" to eventName,
                         "Template" to template.name,
-                        "Countdown" to "3s",
+                        "Status" to activeSlotLabel,
                     )
                     Box(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxWidth()
-                            .background(
-                                Brush.verticalGradient(
-                                    colors = listOf(
-                                        template.accent.copy(alpha = 0.24f),
-                                        Color.White,
-                                    ),
-                                ),
-                                RoundedCornerShape(28.dp),
-                            )
+                            .clip(RoundedCornerShape(28.dp))
                             .border(1.dp, LaunchUiTokens.border, RoundedCornerShape(28.dp)),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(
-                            text = "Placeholder Camera Preview",
-                            color = LaunchUiTokens.inkSoft,
-                            style = MaterialTheme.typography.titleMedium,
+                        if (state.cameraSource == CameraSource.AndroidDefault) {
+                            AndroidCameraCapture(
+                                state = state,
+                                onCaptured = actions.capturePhotoFile,
+                                onCameraAvailabilityChanged = actions.updateDetectedCameras,
+                                onCapturingStateChanged = { },
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        } else {
+                            CameraSurface(state = state)
+                        }
+                    }
+                    if (state.cameraSource == CameraSource.ExternalCanon) {
+                        LaunchPrimaryButton(
+                            text = "Capture (DSLR)",
+                            onClick = actions.capturePhoto,
+                            enabled = !state.isLoading,
                         )
                     }
-                    LaunchPrimaryButton(
-                        text = "Capture",
-                        onClick = onCaptureFinished,
-                        enabled = true,
-                    )
                 }
             }
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(18.dp), modifier = Modifier.fillMaxSize()) {
+                val activeSlotLabel = nextCaptureSlot?.let { "Shot ${it + 1}" } ?: "Siap"
                 LaunchStatusPills(
                     "Event" to eventName,
                     "Template" to template.name,
-                    "Countdown" to "3s",
+                    "Status" to activeSlotLabel,
                 )
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    template.accent.copy(alpha = 0.24f),
-                                    Color.White,
-                                ),
-                            ),
-                            RoundedCornerShape(28.dp),
-                        )
+                        .clip(RoundedCornerShape(28.dp))
                         .border(1.dp, LaunchUiTokens.border, RoundedCornerShape(28.dp)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        text = "Placeholder Camera Preview",
-                        color = LaunchUiTokens.inkSoft,
-                        style = MaterialTheme.typography.titleMedium,
+                    if (state.cameraSource == CameraSource.AndroidDefault) {
+                        AndroidCameraCapture(
+                            state = state,
+                            onCaptured = actions.capturePhotoFile,
+                            onCameraAvailabilityChanged = actions.updateDetectedCameras,
+                            onCapturingStateChanged = { },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else {
+                        CameraSurface(state = state)
+                    }
+                }
+                if (state.cameraSource == CameraSource.ExternalCanon) {
+                    LaunchPrimaryButton(
+                        text = "Capture (DSLR)",
+                        onClick = actions.capturePhoto,
+                        enabled = !state.isLoading,
                     )
                 }
-                LaunchPrimaryButton(
-                    text = "Capture",
-                    onClick = onCaptureFinished,
-                    enabled = true,
-                )
             }
         }
         KioskExitOverlay(
@@ -2622,24 +3621,27 @@ private fun KioskExitOverlay(
     var errorText by remember { mutableStateOf<String?>(null) }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        Surface(
+        Box(
             modifier = Modifier
-                .align(Alignment.TopStart)
-                .clickable {
+                .align(Alignment.TopEnd)
+                .padding(8.dp)
+                .size(56.dp)
+                .clickable(
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                    indication = null
+                ) {
                     tapCount += 1
                     if (tapCount >= 5) {
                         tapCount = 0
                         showDialog = true
                     }
                 },
-            shape = RoundedCornerShape(999.dp),
-            color = Color.White.copy(alpha = 0.14f),
+            contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = "Dafydio",
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                color = LaunchUiTokens.ink,
-                fontWeight = FontWeight.SemiBold,
+            Box(
+                modifier = Modifier
+                    .size(6.dp)
+                    .background(Color.Black.copy(alpha = 0.08f), CircleShape)
             )
         }
     }
@@ -2784,55 +3786,33 @@ fun QrCodeCanvas(
     data: String,
     modifier: Modifier = Modifier
 ) {
+    val bitMatrix = remember(data) {
+        try {
+            QRCodeWriter().encode(data, BarcodeFormat.QR_CODE, 512, 512)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     Canvas(modifier = modifier) {
         val sizePx = size.minDimension
-        val numModules = 21
-        val moduleSize = sizePx / numModules
-        drawRect(color = Color.White)
-        fun drawFinderPattern(x: Int, y: Int) {
-            drawRect(
-                color = Color.Black,
-                topLeft = androidx.compose.ui.geometry.Offset(x * moduleSize, y * moduleSize),
-                size = androidx.compose.ui.geometry.Size(7 * moduleSize, 7 * moduleSize)
-            )
-            drawRect(
-                color = Color.White,
-                topLeft = androidx.compose.ui.geometry.Offset((x + 1) * moduleSize, (y + 1) * moduleSize),
-                size = androidx.compose.ui.geometry.Size(5 * moduleSize, 5 * moduleSize)
-            )
-            drawRect(
-                color = Color.Black,
-                topLeft = androidx.compose.ui.geometry.Offset((x + 2) * moduleSize, (y + 2) * moduleSize),
-                size = androidx.compose.ui.geometry.Size(3 * moduleSize, 3 * moduleSize)
-            )
-        }
-        drawFinderPattern(0, 0)
-        drawFinderPattern(14, 0)
-        drawFinderPattern(0, 14)
-        drawRect(
-            color = Color.Black,
-            topLeft = androidx.compose.ui.geometry.Offset(14 * moduleSize, 14 * moduleSize),
-            size = androidx.compose.ui.geometry.Size(3 * moduleSize, 3 * moduleSize)
-        )
-        drawRect(
-            color = Color.White,
-            topLeft = androidx.compose.ui.geometry.Offset(15 * moduleSize, 15 * moduleSize),
-            size = androidx.compose.ui.geometry.Size(1 * moduleSize, 1 * moduleSize)
-        )
-        val random = java.util.Random(data.hashCode().toLong())
-        for (r in 0 until numModules) {
-            for (c in 0 until numModules) {
-                val isFinder = (r < 8 && c < 8) || (r < 8 && c > 12) || (r > 12 && c < 8)
-                val isAlignment = (r in 14..16 && c in 14..16)
-                if (isFinder || isAlignment) continue
-                if (random.nextBoolean()) {
-                    drawRect(
-                        color = Color.Black,
-                        topLeft = androidx.compose.ui.geometry.Offset(c * moduleSize, r * moduleSize),
-                        size = androidx.compose.ui.geometry.Size(moduleSize, moduleSize)
-                    )
+        if (bitMatrix != null) {
+            val numModules = bitMatrix.width
+            val moduleSize = sizePx / numModules
+            drawRect(color = Color.White)
+            for (r in 0 until numModules) {
+                for (c in 0 until numModules) {
+                    if (bitMatrix.get(c, r)) {
+                        drawRect(
+                            color = Color.Black,
+                            topLeft = androidx.compose.ui.geometry.Offset(c * moduleSize, r * moduleSize),
+                            size = androidx.compose.ui.geometry.Size(moduleSize, moduleSize)
+                        )
+                    }
                 }
             }
+        } else {
+            drawRect(color = Color.LightGray)
         }
     }
 }
@@ -2968,6 +3948,41 @@ private fun FakeQrCode(
             .border(1.dp, LaunchUiTokens.border, RoundedCornerShape(20.dp))
             .padding(10.dp)
     )
+}
+
+@Composable
+private fun CompactEventDetailsCard(config: EventLaunchConfig) {
+    LaunchSectionCard(title = "Detail Event & Welcome") {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            listOf(
+                "Nama Event" to config.eventName,
+                "Tanggal" to config.eventDate,
+                "Paket" to config.packageLabel,
+                "Template" to config.defaultTemplateLabel,
+                "Background Welcome" to config.welcomeConfig.backgroundLabel
+            ).forEach { (label, value) ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = LaunchUiTokens.inkSoft
+                    )
+                    Text(
+                        text = value,
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = LaunchUiTokens.ink
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -3119,20 +4134,6 @@ private fun LaunchEventTabletPreview() {
     }
 }
 
-@Preview(name = "Dashboard Launch Button", widthDp = 390, heightDp = 120, showBackground = true)
-@Composable
-private fun DashboardLaunchButtonPreview() {
-    DafydioBoothTheme {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(LaunchUiTokens.softSurface)
-                .padding(16.dp),
-        ) {
-            DashboardLaunchButton(onLaunchEventClick = {})
-        }
-    }
-}
 
 @Preview(name = "Pra Launch Event Tablet", widthDp = 1280, heightDp = 800, showBackground = true)
 @Composable

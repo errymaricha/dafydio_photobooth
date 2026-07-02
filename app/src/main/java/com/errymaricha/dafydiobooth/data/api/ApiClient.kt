@@ -2,8 +2,10 @@ package com.errymaricha.dafydiobooth.data.api
 
 import com.errymaricha.dafydiobooth.BuildConfig
 import kotlinx.serialization.json.Json
+import okhttp3.ConnectionPool
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
+import okhttp3.Protocol
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
@@ -26,12 +28,15 @@ object ApiClient {
     ): PhotoboothApi {
         val logging = HttpLoggingInterceptor().apply {
             level = if (BuildConfig.DEBUG) {
-                HttpLoggingInterceptor.Level.BASIC
+                HttpLoggingInterceptor.Level.BODY
             } else {
                 HttpLoggingInterceptor.Level.NONE
             }
         }
         val client = OkHttpClient.Builder()
+            .protocols(listOf(Protocol.HTTP_1_1))
+            .connectionPool(ConnectionPool(0, 1, TimeUnit.MILLISECONDS))
+            .retryOnConnectionFailure(true)
             .connectTimeout(connectTimeoutMillis, TimeUnit.MILLISECONDS)
             .readTimeout(readTimeoutMillis, TimeUnit.MILLISECONDS)
             .writeTimeout(writeTimeoutMillis, TimeUnit.MILLISECONDS)
@@ -46,6 +51,8 @@ object ApiClient {
                     deviceIdProvider = deviceIdProvider,
                 ),
             )
+            .addInterceptor(ConnectionCloseInterceptor())
+            .addInterceptor(NetworkRetryInterceptor())
             .addInterceptor(logging)
             .build()
 
